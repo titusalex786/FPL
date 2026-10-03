@@ -27,40 +27,38 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Fetch all tournament registrations associated with this player or email
-    let registrations: any[] = [];
-    if (player?.id || user.email) {
-      let regQuery = supabaseAdmin
-        .from('registrations')
-        .select(
-          `
-          id,
-          registration_number,
-          registration_status,
-          registered_name_snapshot,
-          registered_role_snapshot,
-          registered_jersey_size_snapshot,
-          registered_at,
-          tournament:tournaments (
-            id,
-            name,
-            tournament_date
-          ),
-          payments:payments (
-            payment_status,
-            amount
-          )
+    // Fetch all tournament registrations created by this authenticated user
+    let regQuery = supabaseAdmin
+      .from('registrations')
+      .select(
         `
+        id,
+        registration_number,
+        registration_status,
+        registration_type,
+        registered_name_snapshot,
+        registered_role_snapshot,
+        registered_jersey_size_snapshot,
+        registered_at,
+        correction_requested_at,
+        resubmission_count,
+        admin_remarks,
+        tournament:tournaments (
+          id,
+          name,
+          tournament_date
+        ),
+        payments:payments (
+          payment_status,
+          amount
         )
-        .order('registered_at', { ascending: false });
+      `
+      )
+      .eq('created_by_auth_id', user.id)
+      .order('registered_at', { ascending: false });
 
-      if (player?.id) {
-        regQuery = regQuery.eq('player_id', player.id);
-      }
-
-      const { data: regData } = await regQuery;
-      registrations = regData || [];
-    }
+    const { data: regData } = await regQuery;
+    let registrations = regData || [];
 
     return NextResponse.json({
       player: player || null,

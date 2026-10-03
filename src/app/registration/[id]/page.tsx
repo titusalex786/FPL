@@ -9,8 +9,8 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { formatPaiseToINR, formatDate, cricketRoleLabels } from '@/lib/utils/format';
-import { FullPlayerRegistrationProfile } from '@/types';
-import { Trophy, CheckCircle2, Clock, QrCode, ArrowLeft, Printer, ShieldCheck, Edit3, Upload, Image as ImageIcon, ShieldAlert, Check } from 'lucide-react';
+import { FullPlayerRegistrationProfile, JerseySize } from '@/types';
+import { Trophy, CheckCircle2, Clock, QrCode, ArrowLeft, Printer, ShieldCheck, Edit3, Upload, Image as ImageIcon, ShieldAlert, Check, AlertCircle } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { UPIPaymentChoice } from '@/components/ui/UPIPaymentChoice';
 
@@ -29,6 +29,20 @@ export default function RegistrationDetailsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+
+  // Correction State
+  const [isCorrectionMode, setIsCorrectionMode] = useState(false);
+  const [requestedFields, setRequestedFields] = useState<string[]>([]);
+  const [correctionRemark, setCorrectionRemark] = useState('');
+  const [submittingCorrection, setSubmittingCorrection] = useState(false);
+
+  // Editable fields
+  const [editJerseyName, setEditJerseyName] = useState('');
+  const [editJerseyNumber, setEditJerseyNumber] = useState('');
+  const [editJerseySize, setEditJerseySize] = useState<JerseySize>('M');
+  const [editRole, setEditRole] = useState<any>('BATSMAN');
+  const [editBattingStyle, setEditBattingStyle] = useState<any>('RIGHT_HAND');
+  const [editBowlingStyle, setEditBowlingStyle] = useState('');
 
   useEffect(() => {
     if (!id) return;
@@ -50,6 +64,26 @@ export default function RegistrationDetailsPage() {
           }
           if (result.latestPayment?.payment_screenshot_url) {
             setScreenshotUrl(result.latestPayment.payment_screenshot_url);
+          }
+          
+          if (result.registration.registration_status === 'CORRECTION_REQUESTED') {
+            setIsCorrectionMode(true);
+            const history = result.registration.correction_history || [];
+            const activeCorrection = history.find((h: any) => !h.resolved_at);
+            if (activeCorrection) {
+              setRequestedFields(activeCorrection.requested_fields || []);
+              setCorrectionRemark(activeCorrection.remark || result.registration.admin_remarks || '');
+            } else {
+              setCorrectionRemark(result.registration.admin_remarks || 'Please update your details');
+            }
+            
+            // Init editable fields
+            setEditJerseyName(result.registration.registered_jersey_name_snapshot || '');
+            setEditJerseyNumber(result.registration.registered_jersey_number_snapshot || '');
+            setEditJerseySize(result.registration.registered_jersey_size_snapshot || 'M');
+            setEditRole(result.registration.registered_role_snapshot || 'BATSMAN');
+            setEditBattingStyle(result.registration.registered_batting_style_snapshot || 'RIGHT_HAND');
+            setEditBowlingStyle(result.registration.registered_bowling_style_snapshot || '');
           }
         }
       })
@@ -164,6 +198,40 @@ export default function RegistrationDetailsPage() {
     }
   };
 
+  const handleSubmitCorrection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmittingCorrection(true);
+    setErrorMsg(null);
+
+    const payload: any = {};
+    if (requestedFields.includes('Jersey Name')) payload.jersey_name = editJerseyName;
+    if (requestedFields.includes('Jersey Number')) payload.jersey_number = editJerseyNumber;
+    if (requestedFields.includes('Jersey Size')) payload.jersey_size = editJerseySize;
+    if (requestedFields.includes('Cricket Role')) payload.cricket_role = editRole;
+    if (requestedFields.includes('Batting Style')) payload.batting_style = editBattingStyle;
+    if (requestedFields.includes('Bowling Style')) payload.bowling_style = editBowlingStyle;
+
+    try {
+      const res = await fetch(`/api/registrations/${id}/correction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        setErrorMsg(result.error || 'Failed to submit correction');
+        setSubmittingCorrection(false);
+        return;
+      }
+      
+      // Reload page to see updated state
+      window.location.reload();
+    } catch (err: any) {
+      setErrorMsg('Network error submitting correction');
+      setSubmittingCorrection(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-emerald-500 selection:text-white">
       <Header />
@@ -228,6 +296,29 @@ export default function RegistrationDetailsPage() {
                       <p className="text-xs text-slate-300">
                         Regular tournament slot assigned. Complete payment below to finalize entry.
                       </p>
+                    </div>
+                  </div>
+                ) : data.registration.registration_status === 'CORRECTION_REQUESTED' ? (
+                  <div className="bg-amber-950/40 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3">
+                    <AlertCircle className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="text-sm font-bold text-amber-300">CORRECTION REQUIRED</h3>
+                      <div className="mt-2 p-3 bg-slate-950/60 rounded-xl border border-amber-500/20 text-xs text-amber-200">
+                        <span className="font-semibold block mb-1">Admin Message:</span>
+                        {correctionRemark}
+                      </div>
+                      {requestedFields.length > 0 && (
+                        <div className="mt-3">
+                          <span className="text-xs font-semibold text-slate-400 block mb-1">Requested Fields:</span>
+                          <div className="flex flex-wrap gap-2">
+                            {requestedFields.map(f => (
+                              <span key={f} className="text-xs px-2 py-1 bg-amber-950/60 border border-amber-500/40 rounded text-amber-300">
+                                {f}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -295,6 +386,14 @@ export default function RegistrationDetailsPage() {
                         {data.registration.registered_jersey_size_snapshot || data.player.jersey_size || 'M'}
                       </span>
                     </div>
+                    {(data.registration.registered_jersey_number_snapshot || data.registration.registered_jersey_name_snapshot) && (
+                      <div className="flex justify-between py-1 border-b border-slate-900">
+                        <span className="text-slate-400">Jersey Name / No:</span>
+                        <span className="font-bold text-white">
+                          {data.registration.registered_jersey_name_snapshot || ''} {data.registration.registered_jersey_number_snapshot ? `#${data.registration.registered_jersey_number_snapshot}` : ''}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between py-1">
                       <span className="text-slate-400">Registered Date:</span>
                       <span className="font-semibold text-slate-200">
@@ -303,6 +402,93 @@ export default function RegistrationDetailsPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* CORRECTION FORM */}
+                {isCorrectionMode && requestedFields.length > 0 && (
+                  <div className="bg-amber-950/20 border border-amber-500/30 rounded-2xl p-6 shadow-lg no-print">
+                    <h3 className="text-lg font-bold text-amber-400 mb-4 flex items-center gap-2">
+                      <Edit3 className="w-5 h-5" />
+                      Update Requested Details
+                    </h3>
+                    <form onSubmit={handleSubmitCorrection} className="space-y-4">
+                      {requestedFields.includes('Jersey Name') && (
+                        <Input
+                          label="Jersey Name"
+                          value={editJerseyName}
+                          onChange={(e) => setEditJerseyName(e.target.value)}
+                          placeholder="Name on Jersey"
+                          required
+                        />
+                      )}
+                      {requestedFields.includes('Jersey Number') && (
+                        <Input
+                          label="Jersey Number"
+                          value={editJerseyNumber}
+                          onChange={(e) => setEditJerseyNumber(e.target.value)}
+                          placeholder="e.g. 10"
+                          required
+                        />
+                      )}
+                      {requestedFields.includes('Jersey Size') && (
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-400">Jersey Size</label>
+                          <select 
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-amber-500"
+                            value={editJerseySize}
+                            onChange={(e) => setEditJerseySize(e.target.value as JerseySize)}
+                          >
+                            <option value="S">Small (S - 38")</option>
+                            <option value="M">Medium (M - 40")</option>
+                            <option value="L">Large (L - 42")</option>
+                            <option value="XL">X-Large (XL - 44")</option>
+                            <option value="XXL">XX-Large (XXL - 46")</option>
+                            <option value="3XL">3X-Large (3XL - 48")</option>
+                          </select>
+                        </div>
+                      )}
+                      {requestedFields.includes('Cricket Role') && (
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-400">Cricket Role</label>
+                          <select 
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-amber-500"
+                            value={editRole}
+                            onChange={(e) => setEditRole(e.target.value)}
+                          >
+                            <option value="BATSMAN">Batsman</option>
+                            <option value="BOWLER">Bowler</option>
+                            <option value="ALL_ROUNDER">All-rounder</option>
+                            <option value="BATSMAN_WICKETKEEPER">Batsman + Wicketkeeper</option>
+                            <option value="BOWLER_WICKETKEEPER">Bowler + Wicketkeeper</option>
+                          </select>
+                        </div>
+                      )}
+                      {requestedFields.includes('Batting Style') && (
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-400">Batting Style</label>
+                          <select 
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-amber-500"
+                            value={editBattingStyle}
+                            onChange={(e) => setEditBattingStyle(e.target.value)}
+                          >
+                            <option value="RIGHT_HAND">Right-hand</option>
+                            <option value="LEFT_HAND">Left-hand</option>
+                          </select>
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-end pt-4">
+                        <Button 
+                          type="submit" 
+                          isLoading={submittingCorrection} 
+                          className="bg-amber-500 hover:bg-amber-600 text-black font-bold"
+                          leftIcon={<CheckCircle2 className="w-5 h-5" />}
+                        >
+                          Submit Correction
+                        </Button>
+                      </div>
+                    </form>
+                  </div>
+                )}
 
                 {/* Manual UPI Payment Instructions & QR Display */}
                 {data.tournament.payment_enabled && (

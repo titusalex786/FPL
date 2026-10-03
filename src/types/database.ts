@@ -23,7 +23,10 @@ export interface DbPlayer {
   profile_image_url?: string | null;
   cricket_role: CricketRole;
   batting_style?: BattingStyle | null;
+  bowling_style?: string | null;
   jersey_size?: JerseySize | null;
+  jersey_name?: string | null;
+  jersey_number?: string | null;
   is_tournament_only?: boolean;
   player_type?: string;
   created_at: string;
@@ -107,7 +110,10 @@ export interface DbRegistration {
   registered_name_snapshot: string;
   registered_role_snapshot: CricketRole;
   registered_batting_style_snapshot: BattingStyle | null;
+  registered_bowling_style_snapshot?: string | null;
   registered_jersey_size_snapshot: JerseySize | null;
+  registered_jersey_name_snapshot?: string | null;
+  registered_jersey_number_snapshot?: string | null;
   registered_image_snapshot: string;
   admin_remarks?: string | null;
   correction_history?: Array<{

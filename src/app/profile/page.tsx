@@ -270,35 +270,71 @@ export default function ProfilePage() {
 
             {registrations.length === 0 ? (
               <div className="p-6 bg-slate-950/60 border border-slate-800 rounded-2xl text-center text-xs text-slate-400">
-                You have not registered for any tournaments yet. Check upcoming tournaments below!
+                You have not registered anyone for any tournaments yet. Check upcoming tournaments below!
               </div>
             ) : (
-              <div className="space-y-3">
-                {registrations.map((reg) => (
-                  <div
-                    key={reg.id}
-                    className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                  >
-                    <div>
-                      <h3 className="font-bold text-white text-base">{reg.tournament?.name || 'FairPlay Premier League 2026'}</h3>
-                      <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
-                        <span>Ref: <strong className="font-mono text-emerald-400">{reg.registration_number}</strong></span>
-                        <span>Role: <strong className="text-slate-200">{reg.registered_role_snapshot}</strong></span>
-                        <span>Jersey: <strong className="text-amber-400">{reg.registered_jersey_size_snapshot || 'M'}</strong></span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {registrations.map((reg) => {
+                  const payment = reg.payments?.[0];
+                  const hasCorrection = reg.registration_status === 'CORRECTION_REQUESTED';
+                  const needsPaymentCorrection = payment?.payment_status === 'PENDING' && payment?.verification_note?.includes('Screenshot'); // Simple heuristic for now, we will refine.
+
+                  return (
+                    <div
+                      key={reg.id}
+                      className={`p-5 rounded-2xl border flex flex-col gap-4 shadow-sm transition-all duration-300 ${
+                        hasCorrection ? 'bg-amber-950/20 border-amber-500/30' : 'bg-slate-900 border-slate-700'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex justify-between items-start mb-2">
+                          <h3 className="font-bold text-white text-lg">{reg.registered_name_snapshot}</h3>
+                          <span className="text-xs font-mono text-emerald-400 bg-emerald-950/40 px-2 py-1 rounded border border-emerald-500/30">
+                            {reg.registration_number}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-400 mb-2">
+                          {reg.tournament?.name}
+                        </div>
+                        
+                        <div className="flex flex-col gap-1 text-sm mt-3">
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Registration:</span>
+                            <span className={`font-semibold ${
+                              reg.registration_status === 'CONFIRMED' ? 'text-emerald-400' : 
+                              reg.registration_status === 'CORRECTION_REQUESTED' ? 'text-amber-400' : 'text-slate-300'
+                            }`}>{reg.registration_status}</span>
+                          </div>
+                          {payment && (
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Payment:</span>
+                              <span className={`font-semibold ${
+                                payment.payment_status === 'SUCCESSFUL' ? 'text-emerald-400' : 'text-amber-400'
+                              }`}>{payment.payment_status}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {hasCorrection && (
+                        <div className="p-3 bg-amber-950/40 rounded-xl border border-amber-500/20 text-xs text-amber-200 flex flex-col gap-1">
+                          <span className="font-bold flex items-center gap-1"><AlertCircle className="w-3 h-3" /> CORRECTION REQUIRED</span>
+                          <span>{reg.admin_remarks || 'Please update your details'}</span>
+                        </div>
+                      )}
+
+                      <div className="mt-auto pt-4 border-t border-slate-800">
+                        <Button
+                          variant={hasCorrection ? "primary" : "secondary"}
+                          className={`w-full ${hasCorrection ? 'bg-amber-500 hover:bg-amber-600 text-black' : ''}`}
+                          onClick={() => router.push(`/registration/${reg.id}`)}
+                        >
+                          {hasCorrection ? 'Update Details' : 'View Details'}
+                        </Button>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-3 self-end sm:self-auto">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => router.push(`/registration/${reg.id}`)}
-                      >
-                        View Pass Receipt
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

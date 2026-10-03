@@ -30,6 +30,7 @@ import {
   FileSpreadsheet,
   Download,
   MessageSquare,
+  Edit3,
 } from 'lucide-react';
 
 export default function SingleTournamentAdminPage({ params }: { params: Promise<{ id: string }> }) {
@@ -51,6 +52,19 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [loadingReceipt, setLoadingReceipt] = useState(false);
+
+  // Correction Request State
+  const [correctionModalOpen, setCorrectionModalOpen] = useState(false);
+  const [correctionRegId, setCorrectionRegId] = useState<string | null>(null);
+  const [correctionRequestedFields, setCorrectionRequestedFields] = useState<string[]>([]);
+  const [correctionRemark, setCorrectionRemark] = useState('');
+  const [submittingCorrectionReq, setSubmittingCorrectionReq] = useState(false);
+  
+  const correctionFieldOptions = [
+    'Jersey Name', 'Jersey Number', 'Jersey Size', 
+    'Profile Image', 'Cricket Role', 'Batting Style', 'Bowling Style', 
+    'Payment Screenshot', 'Transaction Reference'
+  ];
 
   const handleViewReceipt = async (url: string | null | undefined) => {
     if (!url || url.trim() === '') return;
@@ -118,6 +132,38 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
       setActionMessage('Network error updating registration');
     } finally {
       setActionLoadingId(null);
+    }
+  };
+
+  const handleRequestCorrection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!correctionRegId) return;
+    
+    setSubmittingCorrectionReq(true);
+    setActionMessage(null);
+    try {
+      const res = await fetch(`/api/admin/registrations/${correctionRegId}/correction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          requestedFields: correctionRequestedFields, 
+          remark: correctionRemark 
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setActionMessage('Correction requested successfully.');
+        setCorrectionModalOpen(false);
+        setCorrectionRequestedFields([]);
+        setCorrectionRemark('');
+        fetchSummary();
+      } else {
+        setActionMessage(`Error: ${data.error || 'Failed to request correction'}`);
+      }
+    } catch (err) {
+      setActionMessage('Network error requesting correction');
+    } finally {
+      setSubmittingCorrectionReq(false);
     }
   };
 
@@ -599,6 +645,18 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
                       >
                         Reject
                       </Button>
+                      
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setCorrectionRegId(r.id);
+                          setCorrectionModalOpen(true);
+                        }}
+                        leftIcon={<Edit3 className="w-4 h-4 text-amber-400" />}
+                      >
+                        Request Correction
+                      </Button>
 
                       {isOrganiserAck ? (
                         <Button
@@ -814,6 +872,61 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
           </div>
         </Modal>
       )}
+
+      {/* Correction Request Modal */}
+      <Modal isOpen={correctionModalOpen} onClose={() => setCorrectionModalOpen(false)} title="Request Correction">
+        <form onSubmit={handleRequestCorrection} className="space-y-4 pt-2">
+          <p className="text-sm text-slate-300">
+            Select the fields the player needs to correct and provide a reason/instruction.
+          </p>
+          
+          <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+            {correctionFieldOptions.map((field) => (
+              <label key={field} className="flex items-center gap-2 text-sm text-slate-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500"
+                  checked={correctionRequestedFields.includes(field)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setCorrectionRequestedFields([...correctionRequestedFields, field]);
+                    } else {
+                      setCorrectionRequestedFields(correctionRequestedFields.filter(f => f !== field));
+                    }
+                  }}
+                />
+                {field}
+              </label>
+            ))}
+          </div>
+
+          <div className="space-y-1 mt-4">
+            <label className="text-xs font-bold text-slate-400">Reason / Instructions</label>
+            <textarea
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-amber-500"
+              placeholder="e.g. Please re-upload a clear payment screenshot"
+              rows={3}
+              required
+              value={correctionRemark}
+              onChange={(e) => setCorrectionRemark(e.target.value)}
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+            <Button variant="outline" type="button" onClick={() => setCorrectionModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              type="submit"
+              isLoading={submittingCorrectionReq}
+              disabled={correctionRequestedFields.length === 0 || !correctionRemark.trim()}
+            >
+              Send Correction Request
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* DELETE TOURNAMENT CONFIRMATION MODAL */}
       <DeleteTournamentModal

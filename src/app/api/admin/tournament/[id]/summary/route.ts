@@ -158,13 +158,46 @@ export async function GET(
     const standardPlayersCount = enrichedRegistrations.filter((r: any) => r.registration_type === 'PLAYER' || !r.registration_type).length;
 
     const successfulPayments = payments.filter((p: any) => p.payment_status === 'SUCCESSFUL').length;
-    const pendingPayments = payments.filter((p: any) => p.payment_status === 'PENDING' || p.payment_status === 'AWAITING_ORGANISER_ACKNOWLEDGEMENT').length;
+    
+    // Server-side construction of the verification queue
+    const pendingApprovals: any[] = [];
+    const seenPayments = new Set();
+
+    for (const r of enrichedRegistrations) {
+      const pStatus = r.payment?.payment_status;
+      const rStatus = r.registration_status || r.status;
+
+      // Exclude terminal / verified states
+      if (pStatus === 'SUCCESSFUL' || pStatus === 'CANCELLED' || pStatus === 'REJECTED') {
+        continue;
+      }
+      if (rStatus === 'CANCELLED' || rStatus === 'REJECTED') {
+        continue;
+      }
+
+      // Check if payment needs verification
+      if (
+        pStatus === 'PENDING' ||
+        pStatus === 'VERIFICATION_REQUIRED' ||
+        pStatus === 'AWAITING_ORGANISER_ACKNOWLEDGEMENT'
+      ) {
+        // Deduplicate by payment ID to avoid showing Owner/Icon duplicates
+        if (r.payment?.id) {
+          if (seenPayments.has(r.payment.id)) continue;
+          seenPayments.add(r.payment.id);
+        }
+        pendingApprovals.push(r);
+      }
+    }
+    
+    const pendingPayments = pendingApprovals.length;
 
     const maxTeams = tournament.max_teams || 8;
 
     return NextResponse.json({
       tournament,
       registrations: enrichedRegistrations,
+      pendingApprovals,
       teamOwners,
       role,
       isAdmin,

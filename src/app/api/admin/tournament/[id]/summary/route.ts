@@ -164,7 +164,7 @@ export async function GET(
     const seenPayments = new Set();
 
     for (const r of enrichedRegistrations) {
-      const pStatus = r.payment?.payment_status;
+      const pStatus = r.payment?.payment_status || 'PENDING';
       const rStatus = r.registration_status || r.status;
 
       // Exclude terminal / verified states

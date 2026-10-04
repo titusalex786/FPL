@@ -599,11 +599,21 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
                         <p className="text-[11px] text-slate-500 mt-0.5">
                           Email: {r.players?.email || 'N/A'} | Payment Status: <span className="font-bold text-amber-400">{r.payment?.payment_status || 'PENDING'}</span>
                         </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Amount: <span className="font-semibold text-emerald-400">₹{(r.payment?.amount || 0)/100}</span> | 
+                          Method: <span className="font-semibold text-white">{r.payment?.payment_method || 'N/A'}</span>
+                          {r.payment?.transaction_id && <span> | Ref: <code className="text-white bg-slate-800 px-1 rounded">{r.payment.transaction_id}</code></span>}
+                        </p>
+                        {r.admin_remarks && (
+                          <p className="text-[11px] text-rose-300 mt-0.5 bg-rose-950/30 p-1 rounded border border-rose-500/20 inline-block">
+                            Admin Remark: {r.admin_remarks}
+                          </p>
+                        )}
                       </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 self-end sm:self-center">
-                      {r.payment?.payment_screenshot_url && (
+                      {r.payment?.payment_screenshot_url ? (
                         <Button
                           variant="outline"
                           size="sm"
@@ -613,6 +623,10 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
                         >
                           View Receipt
                         </Button>
+                      ) : (
+                        <span className="text-[11px] italic text-rose-400/80 mr-2 flex items-center gap-1">
+                          Payment screenshot not submitted
+                        </span>
                       )}
 
                       <Button
@@ -634,7 +648,7 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
                         }}
                         leftIcon={<Edit3 className="w-4 h-4 text-amber-400" />}
                       >
-                        Request Correction
+                        Send for Re-verification
                       </Button>
 
                       {isOrganiserAck ? (

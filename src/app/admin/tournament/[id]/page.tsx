@@ -39,7 +39,7 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
   const router = useRouter();
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'registrations' | 'approval' | 'owners' | 'payments'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'registrations' | 'owners' | 'payments'>('overview');
   const [copiedLink, setCopiedLink] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
@@ -260,18 +260,7 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
     return nameMatch && statusMatch;
   });
 
-  const pendingApprovals = registrations.filter((r) => {
-    const isConfirmed = r.registration_status === 'CONFIRMED' || r.status === 'CONFIRMED';
-    const isRejected = r.registration_status === 'REJECTED' || r.status === 'REJECTED';
-    const isCancelled = r.registration_status === 'CANCELLED' || r.status === 'CANCELLED';
-    if (isConfirmed || isRejected || isCancelled) return false;
-    return (
-      r.registration_status === 'PENDING' ||
-      r.registration_status === 'WAITING_LIST' ||
-      r.payment?.payment_status === 'PENDING' ||
-      r.payment?.payment_status === 'AWAITING_ORGANISER_ACKNOWLEDGEMENT'
-    );
-  });
+  const pendingApprovals: any[] = data?.pendingApprovals || [];
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-emerald-500 selection:text-white">
@@ -360,17 +349,7 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
           >
             Player Registrations ({registrations.length})
           </button>
-          <button
-            onClick={() => setActiveTab('approval')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors shrink-0 flex items-center gap-1.5 ${activeTab === 'approval' ? 'bg-emerald-600 text-white' : 'bg-slate-950 text-slate-400 hover:text-white'}`}
-          >
-            <span>Pending Reviews Queue</span>
-            {pendingApprovals.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-extrabold text-[10px]">
-                {pendingApprovals.length}
-              </span>
-            )}
-          </button>
+
 
           {tournament?.tournament_type === 'OWNER_BASED' && (
             <button
@@ -564,13 +543,13 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
         </Card>
       )}
 
-      {/* TAB CONTENT 3: UNIFIED PENDING REVIEWS QUEUE */}
-      {activeTab === 'approval' && (
+      {/* TAB CONTENT 3: PAYMENTS VERIFICATION */}
+      {activeTab === 'payments' && (
         <Card className="space-y-4">
           <div>
-            <h2 className="text-lg font-bold text-white">Unified Pending Reviews Queue</h2>
+            <h2 className="text-lg font-bold text-white">Payment Proof Verification</h2>
             <p className="text-xs text-slate-400">
-              Review and approve player & owner registrations. Supports both UPI payment proof verification and Organiser Payment Acknowledgements.
+              Review and approve player & owner registrations.
             </p>
           </div>
 
@@ -785,63 +764,7 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
         </Card>
       )}
 
-      {/* TAB CONTENT 5: PAYMENTS VERIFICATION */}
-      {activeTab === 'payments' && (
-        <Card className="space-y-4">
-          <div>
-            <h2 className="text-lg font-bold text-white">Payment Proof Verification</h2>
-            <p className="text-xs text-slate-400">
-              Review payment status and screenshots uploaded by players.
-            </p>
-          </div>
 
-          <div className="divide-y divide-slate-800 border border-slate-800 rounded-xl bg-slate-950 overflow-hidden">
-            {registrations.map((r) => (
-              <div key={r.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-white">{r.registered_name_snapshot}</span>
-                    <Badge status={r.payment?.payment_status || 'PENDING'}>
-                      {r.payment?.payment_status || 'PENDING'}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Ref: <code className="text-emerald-400">{r.registration_number}</code> | Fee: {formatPaiseToINR(tournament?.registration_fee || 0)}
-                  </p>
-                  {r.payment?.verification_note && (
-                    <p className="text-[11px] text-teal-400 mt-1">Note: {r.payment.verification_note}</p>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {r.payment?.payment_screenshot_url ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      isLoading={loadingReceipt}
-                      onClick={() => handleViewReceipt(r.payment.payment_screenshot_url)}
-                      leftIcon={<Eye className="w-3.5 h-3.5 text-sky-400" />}
-                    >
-                      View Receipt Screenshot
-                    </Button>
-                  ) : (
-                    <span className="text-xs text-slate-500 italic">No Screenshot</span>
-                  )}
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    isLoading={actionLoadingId === r.id}
-                    onClick={() => handleApprovalAction(r.id, 'APPROVE')}
-                    leftIcon={<Check className="w-4 h-4" />}
-                  >
-                    Mark Verified
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
       </main>
 
       {previewImageUrl && (

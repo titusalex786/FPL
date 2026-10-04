@@ -21,6 +21,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.0.7",
     "@types/node": "^22.13.4",
     "@types/react": "^19.0.10",

@@ -468,6 +468,7 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
                     <th className="p-3">Player</th>
                     <th className="p-3">Type / Team</th>
                     <th className="p-3">Role</th>
+                    <th className="p-3">Jersey</th>
                     <th className="p-3">Status</th>
                     <th className="p-3">Waitlist Pos</th>
                     <th className="p-3">Payment</th>
@@ -513,6 +514,14 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
                         )}
                       </td>
                       <td className="p-3 font-semibold">{r.registered_role_snapshot}</td>
+                      <td className="p-3 text-xs">
+                        <span className="font-semibold text-white block">
+                          {r.registered_jersey_name_snapshot || '-'} {r.registered_jersey_number_snapshot ? `#${r.registered_jersey_number_snapshot}` : ''}
+                        </span>
+                        <span className="text-[10px] text-amber-400 font-mono">
+                          {r.registered_jersey_size_snapshot ? `Size: ${r.registered_jersey_size_snapshot}` : ''}
+                        </span>
+                      </td>
                       <td className="p-3">
                         <Badge status={r.registration_status}>{r.registration_status}</Badge>
                       </td>
@@ -594,7 +603,7 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
                           )}
                         </div>
                         <p className="text-xs text-slate-400 mt-0.5">
-                          Ref: <code className="text-emerald-400 font-bold">{r.registration_number}</code> | Role: {r.registered_role_snapshot} {r.team_name ? `| Team: ${r.team_name}` : ''}
+                          Ref: <code className="text-emerald-400 font-bold">{r.registration_number}</code> | Role: {r.registered_role_snapshot} {r.team_name ? `| Team: ${r.team_name}` : ''} {r.registered_jersey_name_snapshot ? `| Jersey: ${r.registered_jersey_name_snapshot} #${r.registered_jersey_number_snapshot || ''} (${r.registered_jersey_size_snapshot || ''})` : ''}
                         </p>
                         <p className="text-[11px] text-slate-500 mt-0.5">
                           Email: {r.players?.email || 'N/A'} | Payment Status: <span className="font-bold text-amber-400">{r.payment?.payment_status || 'PENDING'}</span>

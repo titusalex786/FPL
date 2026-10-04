@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { Step2CricketInput } from '@/lib/validation/registration';
 import { Select } from '@/components/ui/Select';
+import { Input } from '@/components/ui/Input';
+import { JerseyInfoTooltip } from '@/components/ui/JerseyInfoTooltip';
 import { Button } from '@/components/ui/Button';
 import { PlayingRole, BattingStyle, BowlingStyle, ExperienceLevel } from '@/types';
 import { Shield, ArrowRight, ArrowLeft } from 'lucide-react';
@@ -54,6 +56,14 @@ export const Step2Cricket: React.FC<Step2Props> = ({ initialData, onNext, onBack
       newErrors.bowlingStyle = 'Please select your bowling style for this role';
     }
 
+    if (!formData.jerseyName || !formData.jerseyName.trim()) {
+      newErrors.jerseyName = 'Jersey name is required';
+    }
+
+    if (!formData.jerseyNumber || !formData.jerseyNumber.trim()) {
+      newErrors.jerseyNumber = 'Jersey number is required';
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
@@ -76,7 +86,7 @@ export const Step2Cricket: React.FC<Step2Props> = ({ initialData, onNext, onBack
             <span>Step 2: Cricket Information</span>
           </h2>
           <p className="text-xs md:text-sm text-slate-400 mt-1">
-            Specify your playing role, batting style, bowling style, and experience.
+            Specify your playing role, batting style, bowling style, and jersey specifications.
           </p>
         </div>
 
@@ -143,7 +153,7 @@ export const Step2Cricket: React.FC<Step2Props> = ({ initialData, onNext, onBack
           </div>
 
           {/* Experience Level */}
-          <div>
+          <div className="md:col-span-2">
             <Select
               label="Experience Level (Optional)"
               value={formData.experienceLevel || ''}
@@ -161,24 +171,51 @@ export const Step2Cricket: React.FC<Step2Props> = ({ initialData, onNext, onBack
             />
           </div>
 
-          {/* Jersey Size */}
-          <div>
-            <Select
-              label="Jersey Size *"
-              required
-              value={formData.jerseySize || 'M'}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, jerseySize: e.target.value }))
-              }
-              options={[
-                { value: 'S', label: 'Small (S - 38")' },
-                { value: 'M', label: 'Medium (M - 40")' },
-                { value: 'L', label: 'Large (L - 42")' },
-                { value: 'XL', label: 'X-Large (XL - 44")' },
-                { value: 'XXL', label: 'XX-Large (XXL - 46")' },
-                { value: '3XL', label: '3X-Large (3XL - 48")' },
-              ]}
-            />
+          {/* Jersey Specification Section */}
+          <div className="md:col-span-2 bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <span className="text-xs font-bold text-amber-400 tracking-wider uppercase">
+                Official Kit & Jersey Specifications
+              </span>
+              <JerseyInfoTooltip />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Input
+                label="Jersey Name *"
+                required
+                value={formData.jerseyName || ''}
+                onChange={(e) => setFormData((prev) => ({ ...prev, jerseyName: e.target.value }))}
+                error={errors.jerseyName}
+                placeholder="Name printed on back"
+              />
+              <Input
+                label="Jersey Number *"
+                required
+                value={formData.jerseyNumber || ''}
+                onChange={(e) => setFormData((prev) => ({ ...prev, jerseyNumber: e.target.value }))}
+                error={errors.jerseyNumber}
+                placeholder="e.g. 7, 18, 99"
+              />
+              <div>
+                <Select
+                  label="Jersey Size *"
+                  required
+                  value={formData.jerseySize || 'M'}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, jerseySize: e.target.value }))
+                  }
+                  options={[
+                    { value: 'S', label: 'Small (S - 38")' },
+                    { value: 'M', label: 'Medium (M - 40")' },
+                    { value: 'L', label: 'Large (L - 42")' },
+                    { value: 'XL', label: 'X-Large (XL - 44")' },
+                    { value: 'XXL', label: 'XX-Large (XXL - 46")' },
+                    { value: '3XL', label: '3X-Large (3XL - 48")' },
+                  ]}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Additional Skills / Comments */}

@@ -35,14 +35,20 @@ export async function GET(req: NextRequest) {
         team_owner_id,
         waitlist_position,
         registered_name_snapshot,
+        registered_image_snapshot,
         registered_role_snapshot,
         registered_batting_style_snapshot,
+        registered_bowling_style_snapshot,
         registered_jersey_size_snapshot,
+        registered_jersey_name_snapshot,
+        registered_jersey_number_snapshot,
         registered_at,
         player:players (
           id,
           full_name,
-          email
+          email,
+          jersey_name,
+          jersey_number
         ),
         tournament:tournaments (
           id,

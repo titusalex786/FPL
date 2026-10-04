@@ -37,6 +37,8 @@ export default function RegisterPage() {
     bowlingStyle: 'DOESNT_BOWL',
     experienceLevel: 'INTERMEDIATE',
     additionalSkills: '',
+    jerseyName: '',
+    jerseyNumber: '',
     jerseySize: 'M',
   });
 
@@ -85,6 +87,9 @@ export default function RegisterPage() {
               ...prev,
               primaryRole: player.cricket_role || 'BATSMAN',
               battingStyle: player.batting_style || 'RIGHT_HAND',
+              bowlingStyle: player.bowling_style || 'DOESNT_BOWL',
+              jerseyName: player.jersey_name || player.full_name || defaultName,
+              jerseyNumber: player.jersey_number || '',
               jerseySize: player.jersey_size || 'M',
             }));
           }
@@ -117,6 +122,10 @@ export default function RegisterPage() {
   const handleStep1Submit = (data: Step1PersonalInput) => {
     setPersonalData(data);
     setSubmitError(null);
+    setCricketData((prev) => ({
+      ...prev,
+      jerseyName: prev.jerseyName || data.fullName,
+    }));
     setCurrentStep(2);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -134,6 +143,7 @@ export default function RegisterPage() {
 
     try {
       const payload = {
+        tournamentId: activeTournament?.id,
         registrationFor: personalData.registrationFor || 'SELF',
         fullName: personalData.fullName,
         email: personalData.email || (personalData.mobile ? `${personalData.mobile}@fairplay.local` : ''),
@@ -142,6 +152,9 @@ export default function RegisterPage() {
         cricketRole: (cricketData.primaryRole === 'WICKETKEEPER' || cricketData.primaryRole === 'BATSMAN_BOWLER' ? 'ALL_ROUNDER' : cricketData.primaryRole),
         primaryRole: cricketData.primaryRole,
         battingStyle: cricketData.battingStyle || 'RIGHT_HAND',
+        bowlingStyle: cricketData.bowlingStyle || 'DOESNT_BOWL',
+        jerseyName: (cricketData.jerseyName || personalData.fullName).trim(),
+        jerseyNumber: (cricketData.jerseyNumber || '').trim(),
         jerseySize: cricketData.jerseySize || 'M',
         mobile: personalData.mobile,
         city: personalData.city,

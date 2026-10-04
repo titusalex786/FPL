@@ -33,14 +33,22 @@ export async function GET(
           team_owner_id,
           waitlist_position,
           registered_name_snapshot,
+          registered_image_snapshot,
           registered_role_snapshot,
           registered_batting_style_snapshot,
+          registered_bowling_style_snapshot,
           registered_jersey_size_snapshot,
+          registered_jersey_name_snapshot,
+          registered_jersey_number_snapshot,
           registered_at,
+          admin_remarks,
+          correction_requested_at,
           players (
             id,
             full_name,
-            email
+            email,
+            jersey_name,
+            jersey_number
           )
         `)
         .eq('tournament_id', tournamentId)
@@ -139,7 +147,7 @@ export async function GET(
       const effectiveStatus = r.registration_status || r.status || 'PENDING';
       return {
         ...r,
-        registered_image_snapshot: '/logo.png',
+        registered_image_snapshot: r.registered_image_snapshot || r.players?.profile_image_url || '/logo.png',
         registration_status: effectiveStatus,
         status: effectiveStatus,
         payment,

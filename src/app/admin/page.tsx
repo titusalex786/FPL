@@ -412,7 +412,7 @@ export default function AdminDashboardPage() {
                       <span className="font-bold text-emerald-400">{t.stats?.totalRegistered || 0}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 text-[10px] block">Pending</span>
+                      <span className="text-slate-500 text-[10px] block">Pending Payment Verification</span>
                       <span className="font-bold text-amber-400">{t.stats?.pendingPayments || 0}</span>
                     </div>
                   </div>

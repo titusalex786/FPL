@@ -153,6 +153,12 @@ export async function POST(req: NextRequest) {
     const effectiveOwnerBowlingStyle = ownerBowlingStyle?.trim() || null;
     const effectiveOwnerJerseySize = ownerJerseySize?.trim() || 'M';
     const effectiveOwnerImageSnapshot = ownerProfileImageUrl?.trim() || null;
+    // Jersey snapshot extraction
+    const effectiveOwnerJerseyName = (body.ownerJerseyName || body.jerseyName || ownerName).trim();
+    const effectiveOwnerJerseyNumber = body.ownerJerseyNumber ? body.ownerJerseyNumber.trim() : null;
+    const effectiveIconJerseyName = body.iconJerseyName ? body.iconJerseyName.trim() : (iconPlayerName || null);
+    const effectiveIconJerseyNumber = body.iconJerseyNumber ? body.iconJerseyNumber.trim() : null;
+    const effectiveIconJerseySize = body.iconJerseySize ? body.iconJerseySize.trim() : 'M';
 
     // 4. Call Atomic PostgreSQL RPC: allocate_owner_registration_v4
     const rpcResV4 = await supabaseAdmin.rpc(
@@ -180,19 +186,72 @@ export async function POST(req: NextRequest) {
         p_created_by_auth_id: user.id,
         p_payment_method: paymentMethod || 'UPI_QR',
         p_icon_image_snapshot: effectiveIconImageSnapshot,
+        p_owner_jersey_name: effectiveOwnerJerseyName,
+        p_owner_jersey_number: effectiveOwnerJerseyNumber,
+        p_icon_jersey_name: effectiveIconJerseyName,
+        p_icon_jersey_number: effectiveIconJerseyNumber,
+        p_icon_jersey_size: effectiveIconJerseySize,
       }
     );
 
     if (rpcResV4.error || !rpcResV4.data || rpcResV4.data.length === 0) {
       console.error('RPC Error allocate_owner_registration_v4:', rpcResV4.error);
+      const rawError = rpcResV4.error?.message || 'Failed to allocate owner slot atomically';
+      let safeError = rawError;
+      if (rawError.includes('already exists') || rawError.includes('already registered')) {
+        safeError = 'You or a team with this name is already registered for this tournament.';
+      } else if (rawError.includes('All owner slots')) {
+        safeError = 'Registration could not be completed because all team owner slots for this tournament are filled.';
+      } else if (rawError.includes('Insufficient player slots')) {
+        safeError = 'Registration could not be completed because there are not enough player slots remaining for Owner + Icon.';
+      }
       return NextResponse.json(
-        { error: rpcResV4.error?.message || 'Failed to allocate owner slot atomically' },
+        { error: safeError },
         { status: 400 }
       );
     }
 
     const result = rpcResV4.data[0];
     const ownerRegistrationId = result.owner_registration_id;
+    const iconRegistrationId = result.icon_registration_id;
+
+    // Guarantee snapshot consistency for historical immutability if update function is available
+    if (typeof (supabaseAdmin.from('registrations') as any)?.update === 'function') {
+      try {
+        await supabaseAdmin
+          .from('registrations')
+          .update({
+            registered_jersey_name_snapshot: effectiveOwnerJerseyName,
+            registered_jersey_number_snapshot: effectiveOwnerJerseyNumber,
+          })
+          .eq('id', ownerRegistrationId);
+
+        if (iconRegistrationId) {
+          await supabaseAdmin
+            .from('registrations')
+            .update({
+              registered_jersey_name_snapshot: effectiveIconJerseyName,
+              registered_jersey_number_snapshot: effectiveIconJerseyNumber,
+              registered_jersey_size_snapshot: effectiveIconJerseySize,
+            })
+            .eq('id', iconRegistrationId);
+        }
+      } catch {}
+    }
+
+    // Update owner player profile defaults if update function is available
+    if (typeof (supabaseAdmin.from('players') as any)?.update === 'function') {
+      try {
+        await supabaseAdmin
+          .from('players')
+          .update({
+            jersey_name: effectiveOwnerJerseyName,
+            jersey_number: effectiveOwnerJerseyNumber,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', effectiveOwnerPlayerId);
+      } catch {}
+    }
 
     // 5. Upload Payment Screenshot to Storage
     let screenshotObjectPath: string | null = null;

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -328,7 +328,12 @@ export default function AdminPlayersPage() {
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 uppercase block font-bold">Jersey</span>
-                    <span className="font-bold text-amber-400">{item.registered_jersey_size_snapshot || 'M'}</span>
+                    <span className="font-bold text-amber-400 block">{item.registered_jersey_size_snapshot || 'M'}</span>
+                    {(item.registered_jersey_name_snapshot || item.registered_jersey_number_snapshot) && (
+                      <span className="text-[9px] text-slate-300 font-mono block">
+                        {item.registered_jersey_name_snapshot} #{item.registered_jersey_number_snapshot}
+                      </span>
+                    )}
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 uppercase block font-bold">Type</span>
@@ -414,7 +419,14 @@ export default function AdminPlayersPage() {
                         <span className="block font-semibold text-slate-200 text-xs">
                           {cricketRoleLabels[item.registered_role_snapshot as keyof typeof cricketRoleLabels] || item.registered_role_snapshot}
                         </span>
-                        <span className="text-xs text-amber-400 font-bold">Jersey: {item.registered_jersey_size_snapshot || 'M'}</span>
+                        <span className="text-xs text-amber-400 font-bold block">
+                          Size: {item.registered_jersey_size_snapshot || 'M'}
+                        </span>
+                        {(item.registered_jersey_name_snapshot || item.registered_jersey_number_snapshot) && (
+                          <span className="text-[11px] text-slate-300 block font-mono">
+                            {item.registered_jersey_name_snapshot || ''} {item.registered_jersey_number_snapshot ? `#${item.registered_jersey_number_snapshot}` : ''}
+                          </span>
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         <Badge status={getBadgeStatus(item)}>{getBadgeLabel(item)}</Badge>

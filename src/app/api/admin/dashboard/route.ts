@@ -32,7 +32,36 @@ export async function GET() {
       const tRegIds = new Set(tRegs.map((r) => r.id));
       const tPayments = (payments || []).filter((p) => tRegIds.has(p.registration_id));
       const successfulPayments = tPayments.filter((p) => p.payment_status === 'SUCCESSFUL').length;
-      const pendingPayments = tPayments.filter((p) => p.payment_status === 'PENDING' || p.payment_status === 'AWAITING_ORGANISER_ACKNOWLEDGEMENT').length;
+
+      // Canonical Payment Verification Queue Count:
+      // Includes registrations whose payment needs admin review (PENDING, VERIFICATION_REQUIRED,
+      // AWAITING_ORGANISER_ACKNOWLEDGEMENT, or missing payment row as effective PENDING),
+      // excluding cancelled/rejected registrations, deduplicated by payment ID.
+      const seenPayments = new Set<string>();
+      let pendingPayments = 0;
+
+      for (const r of tRegs) {
+        const p = (payments || []).find((pay) => pay.registration_id === r.id);
+        const pStatus = p?.payment_status || 'PENDING';
+        const rStatus = r.registration_status || r.status;
+
+        if (pStatus === 'SUCCESSFUL' || pStatus === 'CANCELLED' || pStatus === 'REJECTED') continue;
+        if (rStatus === 'CANCELLED' || rStatus === 'REJECTED') continue;
+
+        const needsVerification =
+          pStatus === 'PENDING' ||
+          pStatus === 'VERIFICATION_REQUIRED' ||
+          pStatus === 'AWAITING_ORGANISER_ACKNOWLEDGEMENT';
+
+        if (needsVerification) {
+          if (p?.id) {
+            if (seenPayments.has(p.id)) continue;
+            seenPayments.add(p.id);
+          }
+          pendingPayments++;
+        }
+      }
+
       const revenuePaise = tPayments
         .filter((p) => p.payment_status === 'SUCCESSFUL')
         .reduce((sum, p) => sum + (p.amount || 0), 0);
@@ -65,7 +94,7 @@ export async function GET() {
 
     const totalRegisteredPlayers = registrations?.length || 0;
     const totalSuccessfulPayments = payments?.filter((p) => p.payment_status === 'SUCCESSFUL').length || 0;
-    const totalPendingPayments = payments?.filter((p) => p.payment_status === 'PENDING' || p.payment_status === 'AWAITING_ORGANISER_ACKNOWLEDGEMENT').length || 0;
+    const totalPendingPayments = tournamentSummaries.reduce((sum, t) => sum + (t.stats?.pendingPayments || 0), 0);
     const totalRevenuePaise = payments
       ?.filter((p) => p.payment_status === 'SUCCESSFUL')
       .reduce((sum, p) => sum + (p.amount || 0), 0) || 0;

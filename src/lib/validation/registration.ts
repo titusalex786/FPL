@@ -22,9 +22,13 @@ export const playerProfileSchema = z.object({
   cricketRole: cricketRolesEnum,
   battingStyle: battingStylesEnum,
   jerseySize: jerseySizesEnum,
+  jerseyName: z.string().min(1, 'Jersey name is required').max(30, 'Jersey name must not exceed 30 characters').trim().optional().or(z.literal('')),
+  jerseyNumber: z.string().min(1, 'Jersey number is required').max(10, 'Jersey number must not exceed 10 characters').trim().optional().or(z.literal('')),
 });
 
 export const tournamentRegistrationSchema = playerProfileSchema.extend({
+  jerseyName: z.string().max(30, 'Jersey name must not exceed 30 characters').trim().optional().or(z.literal('')),
+  jerseyNumber: z.string().max(10, 'Jersey number must not exceed 10 characters').trim().optional().or(z.literal('')),
   termsAccepted: z.literal(true, {
     errorMap: () => ({ message: 'You must accept the terms and conditions to proceed' }),
   }),
@@ -48,6 +52,8 @@ export interface Step2CricketInput {
   battingStyle: string;
   bowlingStyle: string;
   experienceLevel?: string;
+  jerseyName?: string;
+  jerseyNumber?: string;
   jerseySize?: string;
   additionalSkills?: string;
 }

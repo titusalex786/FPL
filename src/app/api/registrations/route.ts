@@ -28,6 +28,8 @@ export async function POST(req: NextRequest) {
     const cricketRole = rawRole === 'WICKETKEEPER' || rawRole === 'BATSMAN_BOWLER' ? 'ALL_ROUNDER' : rawRole;
     const battingStyle = body.battingStyle || 'RIGHT_HAND';
     const jerseySize = body.jerseySize || 'M';
+    const jerseyName = (body.jerseyName || fullName).trim();
+    const jerseyNumber = (body.jerseyNumber || '').trim();
 
     const isOther = body.registrationFor === 'OTHER' || body.isSelf === false;
     const supabaseAdmin = createAdminClient();
@@ -47,6 +49,8 @@ export async function POST(req: NextRequest) {
           cricket_role: cricketRole,
           batting_style: battingStyle,
           bowling_style: body.bowlingStyle || null,
+          jersey_name: jerseyName,
+          jersey_number: jerseyNumber || null,
           profile_image_url: profileImageUrl,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -83,6 +87,9 @@ export async function POST(req: NextRequest) {
             mobile: body.mobile || null,
             cricket_role: cricketRole,
             batting_style: battingStyle,
+            bowling_style: body.bowlingStyle || null,
+            jersey_name: jerseyName,
+            jersey_number: jerseyNumber || null,
             profile_image_url: profileImageUrl,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -96,6 +103,19 @@ export async function POST(req: NextRequest) {
         playerId = newSelfPlayer.id;
       } else {
         playerId = playerProfile.id;
+        // Keep player profile defaults updated for next time without touching historical snapshots
+        if (typeof (supabaseAdmin.from('players') as any)?.update === 'function') {
+          try {
+            await supabaseAdmin
+              .from('players')
+              .update({
+                jersey_name: jerseyName,
+                jersey_number: jerseyNumber || null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', playerId);
+          } catch {}
+        }
       }
     }
 
@@ -152,6 +172,9 @@ export async function POST(req: NextRequest) {
       p_screenshot_bucket: screenshotBucket,
       p_screenshot_object_path: null,
       p_created_by_auth_id: user.id,
+      p_registered_jersey_name_snapshot: jerseyName,
+      p_registered_jersey_number_snapshot: jerseyNumber || null,
+      p_registered_bowling_style_snapshot: body.bowlingStyle || null,
     });
 
     if (rpcErr || !rpcData || rpcData.length === 0) {
@@ -165,6 +188,20 @@ export async function POST(req: NextRequest) {
 
     const result = rpcData[0];
     const registrationId = result.registration_id;
+
+    // Guarantee snapshot consistency for historical immutability if update function is available
+    if (typeof (supabaseAdmin.from('registrations') as any)?.update === 'function') {
+      try {
+        await supabaseAdmin
+          .from('registrations')
+          .update({
+            registered_jersey_name_snapshot: jerseyName,
+            registered_jersey_number_snapshot: jerseyNumber || null,
+            registered_bowling_style_snapshot: body.bowlingStyle || null,
+          })
+          .eq('id', registrationId);
+      } catch {}
+    }
 
     // 5. Upload Payment Screenshot to Storage using canonical registrationId path
     let screenshotObjectPath: string | null = null;

@@ -174,6 +174,8 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
           ownerBattingStyle: ownerData.battingStyle,
           ownerBowlingStyle: ownerData.bowlingStyle || null,
           ownerJerseySize: ownerData.jerseySize,
+          ownerJerseyName: (ownerData.jerseyName || ownerData.fullName).trim(),
+          ownerJerseyNumber: (ownerData.jerseyNumber || '').trim(),
           ownerProfileImageUrl: ownerData.photoUrl || null,
           // Team
           teamName: teamName.trim(),
@@ -187,25 +189,42 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
           iconPlayerRole: iconData.cricketRole,
           iconPlayerBattingStyle: iconData.battingStyle,
           iconPlayerBowlingStyle: iconData.bowlingStyle || null,
+          iconJerseySize: iconData.jerseySize || 'M',
+          iconJerseyName: (iconData.jerseyName || iconData.fullName).trim(),
+          iconJerseyNumber: (iconData.jerseyNumber || '').trim(),
           iconProfileImageUrl: iconData.photoUrl,
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setErrorMsg(data.error || 'Failed to register as Team Owner');
+      let data: any = null;
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await res.json();
+      }
+
+      if (!res.ok || (data && data.error)) {
+        const errorText =
+          data?.error ||
+          (res.status === 413
+            ? 'Uploaded image files are too large. Please use smaller images.'
+            : `Unable to complete registration (${res.statusText || res.status})`);
+        setErrorMsg(errorText);
         setSubmitting(false);
         return;
       }
 
-      setSuccessMsg(data.message || 'Registered as Team Owner successfully!');
+      setSuccessMsg(data?.message || 'Registered as Team Owner successfully!');
       setSubmitting(false);
       setTimeout(() => {
         onClose();
         window.location.reload();
       }, 1800);
     } catch (err: any) {
-      setErrorMsg('Network error submitting Team Owner registration');
+      setErrorMsg(
+        err?.message && !err.message.includes('Failed to fetch')
+          ? err.message
+          : 'Network error submitting Team Owner registration'
+      );
       setSubmitting(false);
     }
   };
@@ -408,8 +427,8 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" isLoading={submitting} variant="gold">
-            Register Owner + Icon ({totalClubbedFeeDisplay})
+          <Button type="submit" isLoading={submitting} disabled={submitting} variant="gold">
+            {submitting ? 'Registering Squad...' : `Register Owner + Icon (${totalClubbedFeeDisplay})`}
           </Button>
         </div>
       </form>

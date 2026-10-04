@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { createClient } from '@/lib/supabase/client';
 import { User, Upload, Save, CheckCircle2, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import { CricketRole, BattingStyle, JerseySize } from '@/types';
+import { computeDerivedRegistrationStatus } from '@/lib/utils/derived-status';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -276,14 +277,14 @@ export default function ProfilePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {registrations.map((reg) => {
                   const payment = reg.payments?.[0];
-                  const hasCorrection = reg.registration_status === 'CORRECTION_REQUESTED';
-                  const needsPaymentCorrection = payment?.payment_status === 'PENDING' && payment?.verification_note?.includes('Screenshot'); // Simple heuristic for now, we will refine.
+                  const derived = computeDerivedRegistrationStatus(reg, payment, reg.tournament);
+                  const isCorrection = derived.key === 'CORRECTION_REQUIRED';
 
                   return (
                     <div
                       key={reg.id}
                       className={`p-5 rounded-2xl border flex flex-col gap-4 shadow-sm transition-all duration-300 ${
-                        hasCorrection ? 'bg-amber-950/20 border-amber-500/30' : 'bg-slate-900 border-slate-700'
+                        isCorrection ? 'bg-amber-950/20 border-amber-500/40' : 'bg-slate-900 border-slate-700'
                       }`}
                     >
                       <div>
@@ -293,43 +294,37 @@ export default function ProfilePage() {
                             {reg.registration_number}
                           </span>
                         </div>
-                        <div className="text-xs text-slate-400 mb-2">
+                        <div className="text-xs text-slate-400 mb-3">
                           {reg.tournament?.name}
                         </div>
-                        
-                        <div className="flex flex-col gap-1 text-sm mt-3">
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Registration:</span>
-                            <span className={`font-semibold ${
-                              reg.registration_status === 'CONFIRMED' ? 'text-emerald-400' : 
-                              reg.registration_status === 'CORRECTION_REQUESTED' ? 'text-amber-400' : 'text-slate-300'
-                            }`}>{reg.registration_status}</span>
-                          </div>
-                          {payment && (
-                            <div className="flex justify-between">
-                              <span className="text-slate-400">Payment:</span>
-                              <span className={`font-semibold ${
-                                payment.payment_status === 'SUCCESSFUL' ? 'text-emerald-400' : 'text-amber-400'
-                              }`}>{payment.payment_status}</span>
-                            </div>
-                          )}
+
+                        {/* Authoritative Derived Status Badge */}
+                        <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                          <span className="text-xs text-slate-400 font-semibold">Status:</span>
+                          <span
+                            className={`text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border ${derived.colorClasses.badgeBg} ${derived.colorClasses.badgeText} ${derived.colorClasses.badgeBorder}`}
+                          >
+                            {derived.fullLabel}
+                          </span>
                         </div>
                       </div>
 
-                      {hasCorrection && (
-                        <div className="p-3 bg-amber-950/40 rounded-xl border border-amber-500/20 text-xs text-amber-200 flex flex-col gap-1">
-                          <span className="font-bold flex items-center gap-1"><AlertCircle className="w-3 h-3" /> CORRECTION REQUIRED</span>
-                          <span>{reg.admin_remarks || 'Please update your details'}</span>
+                      {isCorrection && (
+                        <div className="p-3 bg-amber-950/50 rounded-xl border border-amber-500/30 text-xs text-amber-200 flex flex-col gap-1.5">
+                          <span className="font-extrabold flex items-center gap-1 text-amber-400 uppercase tracking-wider text-[11px]">
+                            <AlertCircle className="w-3.5 h-3.5" /> CORRECTION REQUIRED
+                          </span>
+                          <p className="line-clamp-2 text-amber-200/90">{reg.admin_remarks || 'Admin has requested corrections.'}</p>
                         </div>
                       )}
 
                       <div className="mt-auto pt-4 border-t border-slate-800">
                         <Button
-                          variant={hasCorrection ? "primary" : "secondary"}
-                          className={`w-full ${hasCorrection ? 'bg-amber-500 hover:bg-amber-600 text-black' : ''}`}
+                          variant={isCorrection ? 'primary' : 'secondary'}
+                          className={`w-full ${isCorrection ? 'bg-amber-500 hover:bg-amber-400 text-black font-extrabold' : ''}`}
                           onClick={() => router.push(`/registration/${reg.id}`)}
                         >
-                          {hasCorrection ? 'Update Details' : 'View Details'}
+                          {isCorrection ? 'ACTION: Update & Resubmit' : 'View Registration Pass'}
                         </Button>
                       </div>
                     </div>

@@ -118,6 +118,14 @@ export const Step3Review: React.FC<Step3Props> = ({
                 <span className="text-slate-400">Experience Level:</span>
                 <span className="font-semibold text-slate-100 text-right">{cricketData.experienceLevel || 'N/A'}</span>
               </div>
+              <div className="flex justify-between py-1 border-b border-slate-900">
+                <span className="text-slate-400">Jersey Name:</span>
+                <span className="font-bold text-amber-300 text-right">{cricketData.jerseyName || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-900">
+                <span className="text-slate-400">Jersey Number:</span>
+                <span className="font-bold text-amber-300 font-mono text-right">#{cricketData.jerseyNumber || 'N/A'}</span>
+              </div>
               <div className="flex justify-between py-1">
                 <span className="text-slate-400">Jersey Size:</span>
                 <span className="font-bold text-amber-400 text-right">{cricketData.jerseySize || 'M'}</span>

@@ -176,11 +176,14 @@ export async function GET(
       }
 
       // Check if payment needs verification
-      if (
-        pStatus === 'PENDING' ||
+      const hasScreenshot = !!r.payment?.screenshot_object_path;
+      const isCash = r.payment?.payment_method === 'CASH';
+      const needsVerification = 
         pStatus === 'VERIFICATION_REQUIRED' ||
-        pStatus === 'AWAITING_ORGANISER_ACKNOWLEDGEMENT'
-      ) {
+        pStatus === 'AWAITING_ORGANISER_ACKNOWLEDGEMENT' ||
+        (pStatus === 'PENDING' && (hasScreenshot || isCash));
+
+      if (needsVerification) {
         // Deduplicate by payment ID to avoid showing Owner/Icon duplicates
         if (r.payment?.id) {
           if (seenPayments.has(r.payment.id)) continue;

@@ -107,6 +107,15 @@ export const PrintableReceipt: React.FC<PrintableReceiptProps> = ({ profile }) =
                 {(registration.registered_batting_style_snapshot || player.batting_style || 'N/A').replace('_', ' ')}
               </span>
             </div>
+            <div className="flex justify-between py-1 border-b border-slate-900">
+              <span className="text-slate-400">Jersey Name / No:</span>
+              <span className="font-bold text-white">
+                {registration.registered_jersey_name_snapshot || player.jersey_name || 'N/A'}{' '}
+                {(registration.registered_jersey_number_snapshot || player.jersey_number)
+                  ? `#${registration.registered_jersey_number_snapshot || player.jersey_number}`
+                  : ''}
+              </span>
+            </div>
             <div className="flex justify-between py-1">
               <span className="text-slate-400">Jersey Size:</span>
               <span className="font-bold text-amber-400">

@@ -20,11 +20,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const body = await req.json();
 
     const supabaseAdmin = createAdminClient();
-    const { data: registration, error: regErr } = await supabaseAdmin
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(registrationId);
+    let regQuery = supabaseAdmin
       .from('registrations')
-      .select('*, player:players(*), tournament:tournaments(*)')
-      .eq('id', registrationId)
-      .maybeSingle();
+      .select('*, player:players(*), tournament:tournaments(*)');
+
+    if (isUuid) {
+      regQuery = regQuery.eq('id', registrationId);
+    } else {
+      regQuery = regQuery.eq('registration_number', registrationId);
+    }
+
+    const { data: registration, error: regErr } = await regQuery.maybeSingle();
 
     if (regErr || !registration) {
       return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
@@ -44,54 +51,150 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Correction not requested for this registration' }, { status: 400 });
     }
 
-    const history = registration.correction_history || [];
+    // =========================================================================
+    // CRITICAL #4 — SERVER-SIDE INPUT VALIDATION
+    // Validate and normalise every correctable field before touching the DB.
+    // Uses the same enum values as the DB schema and the normal registration flow.
+    // Unknown request body fields are ignored — only explicitly allowed fields
+    // are ever written to the database.
+    // =========================================================================
+    const VALID_CRICKET_ROLES = [
+      'BATSMAN', 'BOWLER', 'ALL_ROUNDER', 'BATSMAN_WICKETKEEPER', 'BOWLER_WICKETKEEPER',
+    ] as const;
+    const VALID_BATTING_STYLES = ['RIGHT_HAND', 'LEFT_HAND'] as const;
+    const VALID_BOWLING_STYLES = [
+      'RIGHT_ARM_FAST', 'RIGHT_ARM_MEDIUM', 'RIGHT_ARM_SPIN',
+      'LEFT_ARM_FAST', 'LEFT_ARM_MEDIUM', 'LEFT_ARM_SPIN',
+      'DOESNT_BOWL',
+    ] as const;
+    const VALID_JERSEY_SIZES = ['S', 'M', 'L', 'XL', 'XXL', '3XL'] as const;
+
+    const validationErrors: string[] = [];
+
+    // Validate Jersey Name (max 30 chars)
+    if (body.jersey_name !== undefined) {
+      const trimmed = String(body.jersey_name).trim();
+      if (trimmed.length > 30) {
+        validationErrors.push('Jersey Name must not exceed 30 characters');
+      }
+    }
+
+    // Validate Jersey Number (max 10 chars, alphanumeric only)
+    if (body.jersey_number !== undefined) {
+      const trimmed = String(body.jersey_number).trim();
+      if (trimmed.length > 10) {
+        validationErrors.push('Jersey Number must not exceed 10 characters');
+      }
+      if (trimmed.length > 0 && !/^[A-Za-z0-9]+$/.test(trimmed)) {
+        validationErrors.push('Jersey Number must be alphanumeric');
+      }
+    }
+
+    // Validate Jersey Size (strict enum)
+    if (body.jersey_size !== undefined) {
+      const val = String(body.jersey_size).trim().toUpperCase();
+      if (!(VALID_JERSEY_SIZES as readonly string[]).includes(val)) {
+        validationErrors.push(`Jersey Size must be one of: ${VALID_JERSEY_SIZES.join(', ')}`);
+      }
+    }
+
+    // Validate Cricket Role (strict enum)
+    if (body.cricket_role !== undefined) {
+      const val = String(body.cricket_role).trim().toUpperCase();
+      if (!(VALID_CRICKET_ROLES as readonly string[]).includes(val)) {
+        validationErrors.push(`Cricket Role must be one of: ${VALID_CRICKET_ROLES.join(', ')}`);
+      }
+    }
+
+    // Validate Batting Style (strict enum)
+    if (body.batting_style !== undefined) {
+      const val = String(body.batting_style).trim().toUpperCase();
+      if (!(VALID_BATTING_STYLES as readonly string[]).includes(val)) {
+        validationErrors.push(`Batting Style must be one of: ${VALID_BATTING_STYLES.join(', ')}`);
+      }
+    }
+
+    // Validate Bowling Style (strict enum)
+    if (body.bowling_style !== undefined) {
+      const val = String(body.bowling_style).trim().toUpperCase();
+      if (!(VALID_BOWLING_STYLES as readonly string[]).includes(val)) {
+        validationErrors.push(`Bowling Style must be one of: ${VALID_BOWLING_STYLES.join(', ')}`);
+      }
+    }
+
+    // Validate UPI / Transaction Reference (max 100 chars, safe characters)
+    const rawTxnRef = (body.transaction_reference || body.transactionReference || '').trim();
+    if (rawTxnRef.length > 100) {
+      validationErrors.push('Transaction Reference must not exceed 100 characters');
+    }
+    if (rawTxnRef.length > 0 && !/^[A-Za-z0-9@._\-/ ]+$/.test(rawTxnRef)) {
+      validationErrors.push('Transaction Reference contains invalid characters');
+    }
+
+    if (validationErrors.length > 0) {
+      return NextResponse.json(
+        { error: validationErrors.join('. ') },
+        { status: 400 }
+      );
+    }
+
+    // =========================================================================
+    // Resolve active correction history entry
+    // =========================================================================
+    const existingHistory: any[] = Array.isArray(registration.correction_history)
+      ? registration.correction_history
+      : [];
+
     let activeIdx = -1;
-    for (let i = history.length - 1; i >= 0; i--) {
-      if (!history[i].resolved_at) {
+    for (let i = existingHistory.length - 1; i >= 0; i--) {
+      if (!existingHistory[i].resolved_at) {
         activeIdx = i;
         break;
       }
     }
 
-    // If no explicit unresolved item, fallback to latest or create one
-    if (activeIdx === -1 && history.length > 0) {
-      activeIdx = history.length - 1;
+    // If no explicit unresolved item, fallback to latest
+    if (activeIdx === -1 && existingHistory.length > 0) {
+      activeIdx = existingHistory.length - 1;
     }
 
-    const activeCorrection = activeIdx >= 0 ? history[activeIdx] : {};
-    const requestedFields = activeCorrection.requested_fields || [];
+    const activeCorrection = activeIdx >= 0 ? existingHistory[activeIdx] : {};
+    const requestedFields: string[] = activeCorrection.requested_fields || [];
     const allowAllFields = requestedFields.length === 0;
 
     const now = new Date().toISOString();
-    const updatePayload: any = {
+    const updatePayload: Record<string, any> = {
       updated_at: now,
       registration_status: 'PENDING',
       status: 'PENDING',
       resubmission_count: (registration.resubmission_count || 0) + 1,
     };
 
-    const oldValues: any = {};
-    const newValues: any = {};
+    const oldValues: Record<string, any> = {};
+    const newValues: Record<string, any> = {};
 
-    // 1. Jersey Name
+    // 1. Jersey Name — validated and normalised above
     if ((allowAllFields || requestedFields.includes('Jersey Name')) && body.jersey_name !== undefined) {
+      const val = String(body.jersey_name).trim();
       oldValues['Jersey Name'] = registration.registered_jersey_name_snapshot;
-      newValues['Jersey Name'] = body.jersey_name;
-      updatePayload.registered_jersey_name_snapshot = body.jersey_name;
+      newValues['Jersey Name'] = val;
+      updatePayload.registered_jersey_name_snapshot = val;
     }
 
-    // 2. Jersey Number
+    // 2. Jersey Number — validated and normalised above
     if ((allowAllFields || requestedFields.includes('Jersey Number')) && body.jersey_number !== undefined) {
+      const val = String(body.jersey_number).trim();
       oldValues['Jersey Number'] = registration.registered_jersey_number_snapshot;
-      newValues['Jersey Number'] = body.jersey_number;
-      updatePayload.registered_jersey_number_snapshot = body.jersey_number;
+      newValues['Jersey Number'] = val;
+      updatePayload.registered_jersey_number_snapshot = val;
     }
 
-    // 3. Jersey Size
+    // 3. Jersey Size — validated and normalised above
     if ((allowAllFields || requestedFields.includes('Jersey Size')) && body.jersey_size !== undefined) {
+      const val = String(body.jersey_size).trim().toUpperCase();
       oldValues['Jersey Size'] = registration.registered_jersey_size_snapshot;
-      newValues['Jersey Size'] = body.jersey_size;
-      updatePayload.registered_jersey_size_snapshot = body.jersey_size;
+      newValues['Jersey Size'] = val;
+      updatePayload.registered_jersey_size_snapshot = val;
     }
 
     // 4. Profile Photo / Image
@@ -105,30 +208,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       updatePayload.registered_image_snapshot = imgVal;
     }
 
-    // 5. Cricket Role
+    // 5. Cricket Role — validated and normalised above
     if ((allowAllFields || requestedFields.includes('Cricket Role')) && body.cricket_role !== undefined) {
+      const val = String(body.cricket_role).trim().toUpperCase();
       oldValues['Cricket Role'] = registration.registered_role_snapshot;
-      newValues['Cricket Role'] = body.cricket_role;
-      updatePayload.registered_role_snapshot = body.cricket_role;
+      newValues['Cricket Role'] = val;
+      updatePayload.registered_role_snapshot = val;
     }
 
-    // 6. Batting Style
+    // 6. Batting Style — validated and normalised above
     if ((allowAllFields || requestedFields.includes('Batting Style')) && body.batting_style !== undefined) {
+      const val = String(body.batting_style).trim().toUpperCase();
       oldValues['Batting Style'] = registration.registered_batting_style_snapshot;
-      newValues['Batting Style'] = body.batting_style;
-      updatePayload.registered_batting_style_snapshot = body.batting_style;
+      newValues['Batting Style'] = val;
+      updatePayload.registered_batting_style_snapshot = val;
     }
 
-    // 7. Bowling Style
+    // 7. Bowling Style — validated and normalised above
     if ((allowAllFields || requestedFields.includes('Bowling Style')) && body.bowling_style !== undefined) {
+      const val = String(body.bowling_style).trim().toUpperCase();
       oldValues['Bowling Style'] = registration.registered_bowling_style_snapshot;
-      newValues['Bowling Style'] = body.bowling_style;
-      updatePayload.registered_bowling_style_snapshot = body.bowling_style;
+      newValues['Bowling Style'] = val;
+      updatePayload.registered_bowling_style_snapshot = val;
     }
 
     // 8. Payment Screenshot & Transaction Reference
     const rawImageInput = body.screenshotBase64 || (body.screenshot_url && body.screenshot_url.startsWith('data:image/') ? body.screenshot_url : null);
-    const txnRef = (body.transaction_reference || body.transactionReference || '').trim();
+    const txnRef = rawTxnRef; // already validated and trimmed above
 
     if (rawImageInput || txnRef) {
       const { data: existingPayment } = await supabaseAdmin
@@ -155,7 +261,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
       }
 
-      const paymentUpdatePayload: any = {
+      const paymentUpdatePayload: Record<string, any> = {
         payment_status: 'PENDING',
         verification_note: 'Updated by player via correction resubmission. Awaiting Admin verification.',
         updated_at: now,
@@ -198,39 +304,69 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .eq('registration_id', registrationId);
     }
 
-    // Mark active correction in history as resolved
+    // =========================================================================
+    // CRITICAL #1 — IMMUTABLE HISTORY UPDATE
+    // Never mutate the array or objects returned directly from the database.
+    // Build a completely new history array: every previous entry is preserved
+    // as-is (spread into a new object if needed), and the active entry is
+    // replaced with a new object that adds the resolved fields.
+    // =========================================================================
     if (activeIdx >= 0) {
-      history[activeIdx].resolved_at = now;
-      history[activeIdx].resolved_by_auth_id = user.id;
-      history[activeIdx].old_values = oldValues;
-      history[activeIdx].new_values = newValues;
-      updatePayload.correction_history = history;
+      const updatedHistory = existingHistory.map((entry: any, i: number) => {
+        if (i === activeIdx) {
+          // Create a brand-new object — the original DB object is never touched
+          return {
+            ...entry,
+            resolved_at: now,
+            resolved_by_auth_id: user.id,
+            old_values: oldValues,
+            new_values: newValues,
+          };
+        }
+        // All other history entries pass through unchanged
+        return entry;
+      });
+      updatePayload.correction_history = updatedHistory;
     }
 
     const { error: updateErr } = await supabaseAdmin
       .from('registrations')
       .update(updatePayload)
-      .eq('id', registrationId);
+      .eq('id', registration.id);
 
     if (updateErr) {
+      console.error('[correction] Failed to update registration record', {
+        operation: 'registrations.update',
+        registrationId: registration.id,
+      });
       return NextResponse.json({ error: 'Failed to update registration' }, { status: 500 });
     }
 
-    // Create admin notification
+    // Create admin notifications via batch insert (non-fatal failure)
     const { data: adminUsers } = await supabaseAdmin
       .from('admin_users')
       .select('id')
       .limit(5);
 
     if (adminUsers && adminUsers.length > 0) {
-      for (const adminUser of adminUsers) {
-        await supabaseAdmin.from('notifications').insert({
-          user_id: adminUser.id,
-          type: 'CORRECTION_SUBMITTED',
-          title: 'Correction Resubmitted',
-          message: `Player ${registration.registered_name_snapshot} (${registration.registration_number}) has resubmitted corrected details.`,
-          registration_id: registrationId,
-          tournament_id: registration.tournament_id,
+      const notifications = adminUsers.map((adminUser: { id: string }) => ({
+        user_id: adminUser.id,
+        type: 'CORRECTION_SUBMITTED',
+        title: 'Correction Resubmitted',
+        message: `Player ${registration.registered_name_snapshot} (${registration.registration_number}) has resubmitted corrected details.`,
+        registration_id: registration.id,
+        tournament_id: registration.tournament_id,
+      }));
+
+      const { error: notifErr } = await supabaseAdmin
+        .from('notifications')
+        .insert(notifications);
+
+      if (notifErr) {
+        // Non-fatal: log but do not fail the correction response
+        console.error('[correction] Failed to insert admin notifications', {
+          operation: 'notifications.insert',
+          registrationId,
         });
       }
     }
@@ -240,7 +376,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       message: 'Correction resubmitted successfully. Your registration is now under Payment Verification.',
     });
   } catch (err: any) {
-    console.error('Correction Error:', err);
+    console.error('[correction] Unhandled error in correction route', {
+      operation: 'POST /api/registrations/[id]/correction',
+      message: err?.message,
+    });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -40,6 +40,8 @@ export async function POST(
     }
 
     const data = validationResult.data;
+    const effectiveJerseyName = (data.jerseyName || data.fullName).trim();
+    const effectiveJerseyNumber = (data.jerseyNumber || '').trim() || null;
     const supabaseAdmin = createAdminClient();
 
     // 2. Verify Tournament status & max_players capacity
@@ -88,6 +90,8 @@ export async function POST(
         profile_image_url: finalProfileImageUrl,
         cricket_role: data.cricketRole,
         batting_style: data.battingStyle || null,
+        jersey_name: effectiveJerseyName,
+        jersey_number: effectiveJerseyNumber,
         is_tournament_only: true,
         player_type: 'REGULAR',
         created_at: new Date().toISOString(),
@@ -114,6 +118,8 @@ export async function POST(
         profile_image_url: finalProfileImageUrl,
         cricket_role: data.cricketRole,
         batting_style: data.battingStyle || null,
+        jersey_name: effectiveJerseyName,
+        jersey_number: effectiveJerseyNumber,
         jersey_size: data.jerseySize || null,
         is_tournament_only: false,
         updated_at: new Date().toISOString(),
@@ -127,6 +133,8 @@ export async function POST(
 
       if (playerErr && playerErr.message?.includes('column')) {
         delete playerPayload.jersey_size;
+        delete playerPayload.jersey_name;
+        delete playerPayload.jersey_number;
         delete playerPayload.batting_style;
 
         const fallbackRes = await supabaseAdmin
@@ -202,6 +210,8 @@ export async function POST(
       created_by_auth_id: user.id,
       waitlist_position: waitlistPosition,
       registered_name_snapshot: data.fullName,
+      registered_jersey_name_snapshot: effectiveJerseyName,
+      registered_jersey_number_snapshot: effectiveJerseyNumber,
       registered_role_snapshot: data.cricketRole,
       registered_batting_style_snapshot: data.battingStyle || null,
       registered_jersey_size_snapshot: data.jerseySize || null,
@@ -215,6 +225,8 @@ export async function POST(
       .single();
 
     if (regErr && regErr.message?.includes('column')) {
+      delete regPayload.registered_jersey_name_snapshot;
+      delete regPayload.registered_jersey_number_snapshot;
       delete regPayload.registered_jersey_size_snapshot;
       delete regPayload.registered_batting_style_snapshot;
       delete regPayload.registration_type;

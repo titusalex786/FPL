@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Header } from '@/components/public/Header';
 import { Footer } from '@/components/public/Footer';
 import { StepProgress } from '@/components/ui/StepProgress';
@@ -13,8 +13,9 @@ import { ShieldAlert, Lock, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { createClient } from '@/lib/supabase/client';
 
-export default function RegisterPage() {
+function RegisterContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
 
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -61,7 +62,9 @@ export default function RegisterPage() {
 
         // 1. Process Tournament Data
         if (tournamentsRes?.tournaments && Array.isArray(tournamentsRes.tournaments)) {
-          const openT = tournamentsRes.tournaments.find((t: any) => t.registration_open) || tournamentsRes.tournaments[0];
+          const targetId = searchParams?.get('tournamentId') || searchParams?.get('id');
+          const matchedT = targetId ? tournamentsRes.tournaments.find((t: any) => t.id === targetId) : null;
+          const openT = matchedT || tournamentsRes.tournaments.find((t: any) => t.registration_open) || tournamentsRes.tournaments[0];
           setActiveTournament(openT);
         }
 
@@ -117,15 +120,19 @@ export default function RegisterPage() {
       isMounted = false;
       authListener?.subscription?.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase, searchParams]);
 
   const handleStep1Submit = (data: Step1PersonalInput) => {
     setPersonalData(data);
     setSubmitError(null);
-    setCricketData((prev) => ({
-      ...prev,
-      jerseyName: prev.jerseyName || data.fullName,
-    }));
+    setCricketData((prev) => {
+      const isOther = data.registrationFor === 'OTHER';
+      return {
+        ...prev,
+        jerseyName: isOther ? data.fullName : (prev.jerseyName || data.fullName),
+        jerseyNumber: isOther ? '' : prev.jerseyNumber,
+      };
+    });
     setCurrentStep(2);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -281,5 +288,19 @@ export default function RegisterPage() {
 
       <Footer />
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500" />
+        </div>
+      }
+    >
+      <RegisterContent />
+    </Suspense>
   );
 }

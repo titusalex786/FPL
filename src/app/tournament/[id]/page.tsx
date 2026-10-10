@@ -43,6 +43,8 @@ export default function PublicTournamentPage() {
   const [profileImageUrl, setProfileImageUrl] = useState('');
   const [cricketRole, setCricketRole] = useState<CricketRole>('BATSMAN');
   const [battingStyle, setBattingStyle] = useState<BattingStyle>('RIGHT_HAND');
+  const [jerseyName, setJerseyName] = useState('');
+  const [jerseyNumber, setJerseyNumber] = useState('');
   const [jerseySize, setJerseySize] = useState<JerseySize>('M');
   const [termsAccepted, setTermsAccepted] = useState(false);
 
@@ -101,8 +103,11 @@ export default function PublicTournamentPage() {
               setCricketRole(pData.player.cricket_role || 'BATSMAN');
               setBattingStyle(pData.player.batting_style || 'RIGHT_HAND');
               setJerseySize(pData.player.jersey_size || 'M');
+              setJerseyName(pData.player.jersey_name || pData.player.full_name || defaultName);
+              setJerseyNumber(pData.player.jersey_number || '');
             } else {
               setFullName(defaultName);
+              setJerseyName(defaultName);
             }
           })
           .catch(() => {});
@@ -122,6 +127,8 @@ export default function PublicTournamentPage() {
       setCricketRole('BATSMAN');
       setBattingStyle('RIGHT_HAND');
       setJerseySize('M');
+      setJerseyName('');
+      setJerseyNumber('');
     } else if (currentUser) {
       setEmail(currentUser.email || '');
       fetch('/api/players/profile')
@@ -133,6 +140,8 @@ export default function PublicTournamentPage() {
             setCricketRole(pData.player.cricket_role || 'BATSMAN');
             setBattingStyle(pData.player.batting_style || 'RIGHT_HAND');
             setJerseySize(pData.player.jersey_size || 'M');
+            setJerseyName(pData.player.jersey_name || pData.player.full_name || '');
+            setJerseyNumber(pData.player.jersey_number || '');
           }
         })
         .catch(() => {});
@@ -193,6 +202,17 @@ export default function PublicTournamentPage() {
       firstMissingFieldIds.push('field-profile-image');
     }
 
+    const effectiveJerseyName = (jerseyName.trim() || fullName.trim());
+    if (!effectiveJerseyName || effectiveJerseyName.length < 1) {
+      newErrors.jerseyName = 'Please enter name for jersey back';
+      firstMissingFieldIds.push('field-jersey-name');
+    }
+
+    if (!jerseyNumber || !jerseyNumber.trim()) {
+      newErrors.jerseyNumber = 'Please enter desired jersey number';
+      firstMissingFieldIds.push('field-jersey-number');
+    }
+
     if (!termsAccepted) {
       newErrors.termsAccepted = 'You must accept the terms and code of conduct to proceed';
       firstMissingFieldIds.push('field-terms');
@@ -230,6 +250,8 @@ export default function PublicTournamentPage() {
           cricketRole,
           battingStyle,
           jerseySize,
+          jerseyName: effectiveJerseyName,
+          jerseyNumber: jerseyNumber.trim(),
           termsAccepted: true,
         }),
       });
@@ -484,20 +506,22 @@ export default function PublicTournamentPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Full Name */}
                       <div>
-                        <div className="flex items-center mb-1">
-                          <label className="text-xs sm:text-sm font-medium text-slate-300 block">
-                            Player Full Name <span className="text-rose-400">*</span>
-                          </label>
-                          <JerseyInfoTooltip />
-                        </div>
+                        <label className="text-xs sm:text-sm font-medium text-slate-300 block mb-1">
+                          Player Full Name <span className="text-rose-400">*</span>
+                        </label>
                         <input
                           id="field-full-name"
                           type="text"
                           required
                           value={fullName}
                           onChange={(e) => {
-                            setFullName(e.target.value);
+                            const newName = e.target.value;
+                            if (!jerseyName || jerseyName === fullName) {
+                              setJerseyName(newName);
+                            }
+                            setFullName(newName);
                             if (fieldErrors.fullName) setFieldErrors((prev) => { const n = { ...prev }; delete n.fullName; return n; });
+                            if (fieldErrors.jerseyName) setFieldErrors((prev) => { const n = { ...prev }; delete n.jerseyName; return n; });
                           }}
                           placeholder="e.g. Rahul Patil"
                           className={`w-full bg-slate-950 border text-slate-100 rounded-xl px-4 py-2.5 text-xs sm:text-sm focus:outline-none focus:border-emerald-500 transition-colors ${fieldErrors.fullName ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-800'}`}
@@ -505,7 +529,7 @@ export default function PublicTournamentPage() {
                         {fieldErrors.fullName && (
                           <p className="text-xs text-rose-400 font-semibold mt-1">{fieldErrors.fullName}</p>
                         )}
-                        <p className="text-[11px] text-slate-500 mt-1">Exact name printed on your tournament jersey</p>
+                        <p className="text-[11px] text-slate-500 mt-1">Official player registration name</p>
                       </div>
 
                       {/* Email Address */}
@@ -560,22 +584,82 @@ export default function PublicTournamentPage() {
                           { value: 'LEFT_HAND', label: 'Left-hand' },
                         ]}
                       />
+                    </div>
 
-                      {/* Jersey Size */}
-                      <Select
-                        label="Jersey Size *"
-                        required
-                        value={jerseySize}
-                        onChange={(e) => setJerseySize(e.target.value as JerseySize)}
-                        options={[
-                          { value: 'S', label: 'Small (S - 38")' },
-                          { value: 'M', label: 'Medium (M - 40")' },
-                          { value: 'L', label: 'Large (L - 42")' },
-                          { value: 'XL', label: 'X-Large (XL - 44")' },
-                          { value: 'XXL', label: 'XX-Large (XXL - 46")' },
-                          { value: '3XL', label: '3X-Large (3XL - 48")' },
-                        ]}
-                      />
+                    {/* Official Kit & Jersey Specifications Section */}
+                    <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+                        <span className="text-xs font-bold text-amber-400 tracking-wider uppercase flex items-center gap-1.5">
+                          Official Kit & Jersey Specifications
+                        </span>
+                        <JerseyInfoTooltip />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {/* Jersey Name */}
+                        <div>
+                          <label className="text-xs sm:text-sm font-medium text-slate-300 block mb-1">
+                            Jersey Name <span className="text-rose-400">*</span>
+                          </label>
+                          <input
+                            id="field-jersey-name"
+                            type="text"
+                            required
+                            value={jerseyName}
+                            onChange={(e) => {
+                              setJerseyName(e.target.value);
+                              if (fieldErrors.jerseyName) setFieldErrors((prev) => { const n = { ...prev }; delete n.jerseyName; return n; });
+                            }}
+                            placeholder="Name on jersey"
+                            className={`w-full bg-slate-950 border text-slate-100 rounded-xl px-4 py-2.5 text-xs sm:text-sm focus:outline-none focus:border-emerald-500 transition-colors ${fieldErrors.jerseyName ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-800'}`}
+                          />
+                          {fieldErrors.jerseyName && (
+                            <p className="text-xs text-rose-400 font-semibold mt-1">{fieldErrors.jerseyName}</p>
+                          )}
+                          <p className="text-[11px] text-slate-500 mt-1">Printed on back of kit</p>
+                        </div>
+
+                        {/* Jersey Number */}
+                        <div>
+                          <label className="text-xs sm:text-sm font-medium text-slate-300 block mb-1">
+                            Jersey Number <span className="text-rose-400">*</span>
+                          </label>
+                          <input
+                            id="field-jersey-number"
+                            type="text"
+                            required
+                            value={jerseyNumber}
+                            onChange={(e) => {
+                              setJerseyNumber(e.target.value);
+                              if (fieldErrors.jerseyNumber) setFieldErrors((prev) => { const n = { ...prev }; delete n.jerseyNumber; return n; });
+                            }}
+                            placeholder="e.g. 7 or 18"
+                            className={`w-full bg-slate-950 border text-slate-100 rounded-xl px-4 py-2.5 text-xs sm:text-sm focus:outline-none focus:border-emerald-500 transition-colors ${fieldErrors.jerseyNumber ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-800'}`}
+                          />
+                          {fieldErrors.jerseyNumber && (
+                            <p className="text-xs text-rose-400 font-semibold mt-1">{fieldErrors.jerseyNumber}</p>
+                          )}
+                          <p className="text-[11px] text-slate-500 mt-1">Digits 0-99</p>
+                        </div>
+
+                        {/* Jersey Size */}
+                        <div>
+                          <Select
+                            label="Jersey Size *"
+                            required
+                            value={jerseySize}
+                            onChange={(e) => setJerseySize(e.target.value as JerseySize)}
+                            options={[
+                              { value: 'S', label: 'Small (S - 38")' },
+                              { value: 'M', label: 'Medium (M - 40")' },
+                              { value: 'L', label: 'Large (L - 42")' },
+                              { value: 'XL', label: 'X-Large (XL - 44")' },
+                              { value: 'XXL', label: 'XX-Large (XXL - 46")' },
+                              { value: '3XL', label: '3X-Large (3XL - 48")' },
+                            ]}
+                          />
+                        </div>
+                      </div>
                     </div>
 
                     {/* Terms & Conduct Checkbox */}
@@ -680,19 +764,30 @@ export default function PublicTournamentPage() {
                         </div>
                       </div>
 
-                      <div className="mt-3 pt-3 border-t border-slate-800/60 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                      <div className="mt-3 pt-3 border-t border-slate-800/60 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                         <div>
                           <span className="text-slate-400 block">Ref ID</span>
                           <span className="font-mono font-bold text-emerald-400">{myEntry.registration_number}</span>
                         </div>
                         <div>
+                          <span className="text-slate-400 block">Jersey Name / No</span>
+                          <span className="font-bold text-amber-300">
+                            {myEntry.registered_jersey_name_snapshot || myEntry.registered_name_snapshot || '-'} {myEntry.registered_jersey_number_snapshot ? `#${myEntry.registered_jersey_number_snapshot}` : ''}
+                          </span>
+                        </div>
+                        <div>
                           <span className="text-slate-400 block">Jersey Size</span>
                           <span className="font-bold text-amber-400">{myEntry.registered_jersey_size_snapshot || 'M'}</span>
                         </div>
-                        {myEntry.team_name && (
+                        {myEntry.team_name ? (
                           <div>
                             <span className="text-slate-400 block">Team</span>
                             <span className="font-bold text-teal-400">🛡️ {myEntry.team_name}</span>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="text-slate-400 block">Role</span>
+                            <span className="font-bold text-teal-400">{myEntry.registered_role_snapshot || 'BATSMAN'}</span>
                           </div>
                         )}
                       </div>

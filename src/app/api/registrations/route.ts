@@ -59,7 +59,10 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (newPlayerErr || !newPlayer?.id) {
-        console.error('Failed to create tournament-only player:', newPlayerErr);
+        console.error('[registration] Failed to create tournament-only player', {
+          operation: 'players.insert (tournament-only)',
+          code: newPlayerErr?.code,
+        });
         return NextResponse.json({ error: 'Failed to create participant profile' }, { status: 500 });
       }
 
@@ -73,6 +76,10 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (profileErr) {
+        console.error('[registration] Failed to resolve player profile', {
+          operation: 'players.select',
+          code: profileErr?.code,
+        });
         return NextResponse.json({ error: 'Failed to resolve player profile' }, { status: 500 });
       }
 
@@ -98,15 +105,22 @@ export async function POST(req: NextRequest) {
           .single();
 
         if (createSelfErr || !newSelfPlayer?.id) {
+          console.error('[registration] Failed to create self player profile', {
+            operation: 'players.insert (self)',
+            code: createSelfErr?.code,
+          });
           return NextResponse.json({ error: 'Failed to create player profile for user' }, { status: 500 });
         }
         playerId = newSelfPlayer.id;
       } else {
         playerId = playerProfile.id;
-        // Keep player profile defaults updated for next time without touching historical snapshots
+
+        // CRITICAL #2 FIX: Never silently swallow DB update errors.
+        // Update jersey snapshot defaults for next-time convenience.
+        // Failure is logged but is non-fatal — it only affects UI pre-filling.
         if (typeof (supabaseAdmin.from('players') as any)?.update === 'function') {
           try {
-            await supabaseAdmin
+            const { error: updateProfileErr } = await supabaseAdmin
               .from('players')
               .update({
                 jersey_name: jerseyName,
@@ -114,7 +128,23 @@ export async function POST(req: NextRequest) {
                 updated_at: new Date().toISOString(),
               })
               .eq('id', playerId);
-          } catch {}
+
+            if (updateProfileErr) {
+              // Non-fatal: snapshot is in the registration record, not the player profile.
+              // Log for diagnostics but allow registration to continue.
+              console.error('[registration] Failed to update player profile jersey defaults (non-fatal)', {
+                operation: 'players.update (jersey defaults)',
+                playerId,
+                code: updateProfileErr?.code,
+              });
+            }
+          } catch (err: any) {
+            console.error('[registration] Failed to update player profile jersey defaults (non-fatal)', {
+              operation: 'players.update (jersey defaults exception)',
+              playerId,
+              message: err?.message,
+            });
+          }
         }
       }
     }
@@ -178,7 +208,11 @@ export async function POST(req: NextRequest) {
     });
 
     if (rpcErr || !rpcData || rpcData.length === 0) {
-      console.error('RPC allocate_player_registration_v2 Error:', rpcErr);
+      console.error('[registration] RPC allocate_player_registration_v2 failed', {
+        operation: 'allocate_player_registration_v2',
+        code: rpcErr?.code,
+        message: rpcErr?.message,
+      });
       const isDuplicate = rpcErr?.message?.includes('already registered') || rpcErr?.code === '23505';
       const msg = isDuplicate
         ? 'You are already registered for this tournament. To register someone else, please select "Someone else".'
@@ -189,10 +223,11 @@ export async function POST(req: NextRequest) {
     const result = rpcData[0];
     const registrationId = result.registration_id;
 
-    // Guarantee snapshot consistency for historical immutability if update function is available
+    // CRITICAL #2 FIX: Never silently swallow DB errors.
+    // Guarantee snapshot consistency for historical immutability.
     if (typeof (supabaseAdmin.from('registrations') as any)?.update === 'function') {
       try {
-        await supabaseAdmin
+        const { error: snapshotErr } = await supabaseAdmin
           .from('registrations')
           .update({
             registered_jersey_name_snapshot: jerseyName,
@@ -200,10 +235,42 @@ export async function POST(req: NextRequest) {
             registered_bowling_style_snapshot: body.bowlingStyle || null,
           })
           .eq('id', registrationId);
-      } catch {}
+
+        if (snapshotErr) {
+          // Non-fatal: RPC already wrote the core snapshot. This is a supplemental update.
+          console.error('[registration] Failed to update registration snapshot fields (non-fatal)', {
+            operation: 'registrations.update (snapshot)',
+            registrationId,
+            code: snapshotErr?.code,
+          });
+        }
+      } catch (err: any) {
+        console.error('[registration] Exception updating registration snapshot fields (non-fatal)', {
+          operation: 'registrations.update (snapshot exception)',
+          registrationId,
+          message: err?.message,
+        });
+      }
     }
 
-    // 5. Upload Payment Screenshot to Storage using canonical registrationId path
+    // =========================================================================
+    // CRITICAL #3 FIX — PAYMENT SCREENSHOT LINKING
+    //
+    // Flow:
+    //   1. RPC creates the registration row and a payment row atomically.
+    //   2. RPC returns result.payment_id.
+    //   3. We upload the screenshot to Storage.
+    //   4. We link the screenshot to the payment row.
+    //
+    // Bug that existed: if result.payment_id was null/undefined (e.g. waitlist),
+    //   the screenshot was uploaded to Storage but no payment row was updated —
+    //   leaving an orphaned Storage object.
+    //
+    // Fix: After a successful upload, if payment_id is missing, look up the
+    //   payment row by registration_id and update it there. If no payment row
+    //   exists yet, create one so the screenshot reference is never orphaned.
+    //   Never create a duplicate payment row if one already exists.
+    // =========================================================================
     let screenshotObjectPath: string | null = null;
     if (screenshotBuffer && screenshotValidation) {
       const ext = screenshotValidation.extension;
@@ -212,18 +279,94 @@ export async function POST(req: NextRequest) {
 
       try {
         await uploadToStorageBucket(screenshotBucket, screenshotObjectPath, screenshotBuffer, screenshotValidation.mimeType);
+      } catch (uploadErr: any) {
+        // Storage upload failed — do not orphan a screenshot reference in DB.
+        console.error('[registration] Payment screenshot upload to Storage failed', {
+          operation: 'storage.upload (payment-screenshots)',
+          registrationId,
+          message: uploadErr?.message,
+        });
+        screenshotObjectPath = null; // ensure nothing is written to DB for a failed upload
+      }
+
+      if (screenshotObjectPath) {
+        // Screenshot is in Storage — must link it to the payment record.
+        const screenshotLinkPayload = {
+          screenshot_bucket: screenshotBucket,
+          screenshot_object_path: screenshotObjectPath,
+        };
 
         if (result.payment_id) {
-          await supabaseAdmin
+          // Common path: RPC returned the payment ID — update it directly.
+          const { error: linkErr } = await supabaseAdmin
             .from('payments')
-            .update({
-              screenshot_bucket: screenshotBucket,
-              screenshot_object_path: screenshotObjectPath,
-            })
+            .update(screenshotLinkPayload)
             .eq('id', result.payment_id);
+
+          if (linkErr) {
+            console.error('[registration] Failed to link screenshot to payment record', {
+              operation: 'payments.update (screenshot link)',
+              registrationId,
+              paymentId: result.payment_id,
+              code: linkErr?.code,
+            });
+          }
+        } else {
+          // Fallback path: payment_id was not returned by RPC (e.g. waitlist).
+          // Look up the payment row by registration_id to avoid creating a duplicate.
+          const { data: existingPayment, error: lookupErr } = await supabaseAdmin
+            .from('payments')
+            .select('id')
+            .eq('registration_id', registrationId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (lookupErr) {
+            console.error('[registration] Failed to look up payment row for screenshot linking', {
+              operation: 'payments.select (screenshot fallback)',
+              registrationId,
+              code: lookupErr?.code,
+            });
+          } else if (existingPayment) {
+            // Payment row exists — link the screenshot to it.
+            const { error: fallbackLinkErr } = await supabaseAdmin
+              .from('payments')
+              .update(screenshotLinkPayload)
+              .eq('id', existingPayment.id);
+
+            if (fallbackLinkErr) {
+              console.error('[registration] Failed to link screenshot to looked-up payment record', {
+                operation: 'payments.update (screenshot fallback link)',
+                registrationId,
+                paymentId: existingPayment.id,
+                code: fallbackLinkErr?.code,
+              });
+            }
+          } else {
+            // No payment row found — create one and include the screenshot link.
+            // This guards against the screenshot being orphaned in Storage.
+            const tFee = tournament.registration_fee || 50000;
+            const { error: createPaymentErr } = await supabaseAdmin
+              .from('payments')
+              .insert({
+                registration_id: registrationId,
+                amount: tFee,
+                player_fee_paise: tFee,
+                payment_method: 'UPI_QR',
+                payment_status: 'PENDING',
+                ...screenshotLinkPayload,
+              });
+
+            if (createPaymentErr) {
+              console.error('[registration] Failed to create payment row with screenshot link', {
+                operation: 'payments.insert (screenshot orphan guard)',
+                registrationId,
+                code: createPaymentErr?.code,
+              });
+            }
+          }
         }
-      } catch (uploadErr: any) {
-        console.error('Failed to upload payment screenshot:', uploadErr);
       }
     }
 
@@ -243,7 +386,10 @@ export async function POST(req: NextRequest) {
         : 'Registration completed successfully!',
     });
   } catch (err: any) {
-    console.error('Registration API POST error:', err);
+    console.error('[registration] Unhandled error in registration POST', {
+      operation: 'POST /api/registrations',
+      message: err?.message,
+    });
     return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
   }
 }

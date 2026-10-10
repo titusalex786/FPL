@@ -55,6 +55,7 @@ export default function RegistrationDetailsPage() {
   const [correctionSuccessMsg, setCorrectionSuccessMsg] = useState<string | null>(null);
 
   // Editable fields
+  const [editName, setEditName] = useState('');
   const [editJerseyName, setEditJerseyName] = useState('');
   const [editJerseyNumber, setEditJerseyNumber] = useState('');
   const [editJerseySize, setEditJerseySize] = useState<JerseySize>('M');
@@ -100,6 +101,7 @@ export default function RegistrationDetailsPage() {
             }
 
             // Init editable fields from existing snapshot
+            setEditName(result.registration.registered_name_snapshot || '');
             setEditJerseyName(result.registration.registered_jersey_name_snapshot || '');
             setEditJerseyNumber(result.registration.registered_jersey_number_snapshot || '');
             setEditJerseySize(result.registration.registered_jersey_size_snapshot || 'M');
@@ -233,11 +235,8 @@ export default function RegistrationDetailsPage() {
       setUploadSuccess(true);
       setUploading(false);
 
-      // Reload state after short delay
-      setTimeout(() => {
-        fetchRegistrationData();
-        setUploadSuccess(false);
-      }, 1200);
+      // Redirect immediately to Home page upon successful screenshot submission
+      router.push('/?submitted=true');
     } catch {
       setUploadError('Network error uploading screenshot');
       setUploading(false);
@@ -251,6 +250,7 @@ export default function RegistrationDetailsPage() {
     setCorrectionSuccessMsg(null);
 
     const payload: any = {
+      name: editName,
       jersey_name: editJerseyName,
       jersey_number: editJerseyNumber,
       jersey_size: editJerseySize,
@@ -451,6 +451,24 @@ export default function RegistrationDetailsPage() {
                     {/* CORRECTION FORM */}
                     <form onSubmit={handleSubmitCorrection} className="space-y-4 pt-2">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Player Name */}
+                        {(requestedFields.length === 0 || requestedFields.some((f) => /name/i.test(f))) && (
+                          <div className={requestedFields.some((f) => /name/i.test(f)) ? 'sm:col-span-2 p-3 bg-amber-950/20 border-2 border-amber-500/60 rounded-2xl' : 'sm:col-span-2'}>
+                            {requestedFields.some((f) => /name/i.test(f)) && (
+                              <span className="text-[10px] px-2 py-0.5 bg-amber-500 text-black font-extrabold rounded-full mb-1 inline-block">
+                                ⚠️ Correction Requested
+                              </span>
+                            )}
+                            <Input
+                              label="Player Name *"
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              placeholder="Full Player Name"
+                              required
+                            />
+                          </div>
+                        )}
+
                         {/* Jersey Name */}
                         {(requestedFields.length === 0 || requestedFields.includes('Jersey Name')) && (
                           <Input
@@ -578,10 +596,26 @@ export default function RegistrationDetailsPage() {
                         requestedFields.includes('Payment Screenshot') ||
                         requestedFields.includes('Transaction Reference') ||
                         data.payment?.verification_note) && (
-                        <div className="p-4 bg-slate-950/80 border border-amber-500/30 rounded-2xl space-y-3">
-                          <span className="text-xs font-bold text-amber-300 block">
-                            Payment Screenshot & Reference Update
-                          </span>
+                        <div className="p-4 bg-slate-950/80 border border-amber-500/30 rounded-2xl space-y-4">
+                          <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
+                            <span className="text-xs font-bold text-amber-300 block">
+                              Payment Verification Required
+                            </span>
+                            <span className="text-xs font-bold text-emerald-400">
+                              Amount: {formatPaiseToINR(data.tournament.registration_fee)}
+                            </span>
+                          </div>
+
+                          <div className="max-w-xs mx-auto">
+                            <UPIPaymentChoice
+                              upiId={data.tournament.upi_id}
+                              payeeName={data.tournament.name}
+                              amountPaise={data.tournament.registration_fee}
+                              referenceNote={`Reg ${data.registration.registration_number}`}
+                              qrUrlFallback={data.tournament.payment_qr_url}
+                            />
+                          </div>
+
                           <div className="flex flex-col sm:flex-row items-center gap-4">
                             {screenshotUrl ? (
                               <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-amber-500 shrink-0 bg-slate-900">
@@ -683,18 +717,27 @@ export default function RegistrationDetailsPage() {
                       </span>
                     </div>
                     <div className="flex justify-between py-1 border-b border-slate-900">
-                      <span className="text-slate-400">Jersey Size:</span>
-                      <span className="font-bold text-amber-400">
-                        {data.registration.registered_jersey_size_snapshot || data.player.jersey_size || 'M'}
+                      <span className="text-slate-400">Bowling Style:</span>
+                      <span className="font-semibold text-slate-200">
+                        {data.registration.registered_bowling_style_snapshot || 'N/A'}
                       </span>
                     </div>
                     <div className="flex justify-between py-1 border-b border-slate-900">
-                      <span className="text-slate-400">Jersey Name / No:</span>
+                      <span className="text-slate-400">Jersey Name:</span>
                       <span className="font-bold text-white">
-                        {data.registration.registered_jersey_name_snapshot || 'N/A'}{' '}
-                        {data.registration.registered_jersey_number_snapshot
-                          ? `#${data.registration.registered_jersey_number_snapshot}`
-                          : ''}
+                        {data.registration.registered_jersey_name_snapshot || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-900">
+                      <span className="text-slate-400">Jersey Number:</span>
+                      <span className="font-bold text-amber-300">
+                        {data.registration.registered_jersey_number_snapshot || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-900">
+                      <span className="text-slate-400">Jersey Size:</span>
+                      <span className="font-bold text-emerald-400">
+                        {data.registration.registered_jersey_size_snapshot || data.player.jersey_size || 'M'}
                       </span>
                     </div>
                     <div className="flex justify-between py-1">

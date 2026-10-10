@@ -17,6 +17,9 @@ import {
   Check,
   Clock,
 } from 'lucide-react';
+import { MyRegistrationProvider } from '@/components/home/MyRegistrationContext';
+import { MyRegistrationSection } from '@/components/home/MyRegistrationSection';
+import { TournamentCtaButton } from '@/components/home/TournamentCtaButton';
 
 export const revalidate = 60; // Revalidate public homepage every 60 seconds
 
@@ -42,35 +45,39 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const feeDisplay = activeTournament ? formatPaiseToINR(activeTournament.registration_fee) : '₹0';
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-emerald-500 selection:text-white">
-      <Header />
+    <MyRegistrationProvider>
+      <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-emerald-500 selection:text-white">
+        <Header />
 
-      <main className="flex-1 space-y-16 md:space-y-24 pb-20">
-        {/* SUBMITTED PAYMENT SCREENSHOT BANNER */}
-        {isSubmitted && (
-          <div className="bg-emerald-950/90 border-b border-emerald-500/50 py-4 px-4 sm:px-6 shadow-2xl animate-fadeIn">
-            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
-                  <Check className="w-6 h-6" />
+        <main className="flex-1 space-y-16 md:space-y-24 pb-20">
+          {/* SUBMITTED PAYMENT SCREENSHOT BANNER */}
+          {isSubmitted && (
+            <div className="bg-emerald-950/90 border-b border-emerald-500/50 py-4 px-4 sm:px-6 shadow-2xl animate-fadeIn">
+              <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                    <Check className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-white text-sm sm:text-base">
+                      🎉 Registration Submitted Successfully!
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      Your entry for <strong className="text-emerald-300">{submittedTournamentName}</strong> is now <strong className="text-amber-300">PENDING</strong> admin review. You will be confirmed once your payment is verified.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-extrabold text-white text-sm sm:text-base">
-                    🎉 Registration Submitted Successfully!
-                  </h3>
-                  <p className="text-xs text-slate-300 mt-0.5">
-                    Your entry for <strong className="text-emerald-300">{submittedTournamentName}</strong> is now <strong className="text-amber-300">PENDING</strong> admin review. You will be confirmed once your payment is verified.
-                  </p>
-                </div>
+                <Link href="#my-registration">
+                  <Button size="sm" variant="outline">
+                    Check Registration Status
+                  </Button>
+                </Link>
               </div>
-              <Link href="#upcoming-tournaments">
-                <Button size="sm" variant="outline">
-                  Check Registration Status
-                </Button>
-              </Link>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* MY REGISTRATION PASS SECTION (Displayed for authenticated players with active entry) */}
+          <MyRegistrationSection />
 
         {/* HERO SECTION */}
         <section className="relative overflow-hidden pt-6 pb-12 md:pt-12 md:pb-20 border-b border-slate-900 bg-gradient-to-b from-slate-900/80 via-slate-950 to-slate-950">
@@ -189,11 +196,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
                     return (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <Link href={`/tournament/${activeTournament.id}?type=player`} className="w-full">
-                          <Button size="lg" className="w-full shadow-lg shadow-emerald-950/60" leftIcon={<UserCheck className="w-5 h-5" />}>
-                            Register as Player ({feeDisplay})
-                          </Button>
-                        </Link>
+                        <TournamentCtaButton
+                          tournamentId={activeTournament.id}
+                          registrationFee={activeTournament.registration_fee}
+                          tournamentType={activeTournament.tournament_type}
+                          isHero={true}
+                        />
 
                         {activeTournament.tournament_type === 'OWNER_BASED' && (
                           <Link href={`/tournament/${activeTournament.id}?type=owner`} className="w-full">
@@ -280,11 +288,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
                     return (
                       <div className="flex flex-wrap items-center gap-3">
-                        <Link href={`/tournament/${activeTournament.id}?type=player`}>
-                          <Button size="lg" className="shadow-lg shadow-emerald-950/60" leftIcon={<UserCheck className="w-5 h-5" />}>
-                            Register as Player ({feeDisplay})
-                          </Button>
-                        </Link>
+                        <TournamentCtaButton
+                          tournamentId={activeTournament.id}
+                          registrationFee={activeTournament.registration_fee}
+                          tournamentType={activeTournament.tournament_type}
+                          isHero={true}
+                        />
 
                         {activeTournament.tournament_type === 'OWNER_BASED' && (
                           <Link href={`/tournament/${activeTournament.id}?type=owner`}>
@@ -398,18 +407,13 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                   </div>
 
                   <div className="pt-2 flex justify-end">
-                    <Link href={`/tournament/${item.id}`} className="w-full sm:w-auto">
-                      <Button
-                        size="md"
-                        className="w-full sm:w-auto"
-                        variant={isTournamentCompleted(item.tournament_date) ? 'outline' : undefined}
-                        rightIcon={<ArrowRight className="w-4 h-4" />}
-                      >
-                        {isTournamentCompleted(item.tournament_date)
-                          ? 'View Tournament'
-                          : `Register Now (${formatPaiseToINR(item.registration_fee)})`}
-                      </Button>
-                    </Link>
+                    <TournamentCtaButton
+                      tournamentId={item.id}
+                      registrationFee={item.registration_fee}
+                      isHero={false}
+                      isCompleted={isTournamentCompleted(item.tournament_date)}
+                      isClosed={!item.registration_open}
+                    />
                   </div>
                 </div>
               ))}
@@ -496,5 +500,6 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
       <Footer />
     </div>
+  </MyRegistrationProvider>
   );
 }

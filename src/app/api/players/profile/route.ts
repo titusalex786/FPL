@@ -27,7 +27,7 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Fetch all tournament registrations created by this authenticated user
+    // Fetch all tournament registrations created by or linked to this authenticated user
     let regQuery = supabaseAdmin
       .from('registrations')
       .select(
@@ -38,7 +38,12 @@ export async function GET() {
         registration_type,
         registered_name_snapshot,
         registered_role_snapshot,
+        registered_batting_style_snapshot,
+        registered_bowling_style_snapshot,
+        registered_jersey_name_snapshot,
+        registered_jersey_number_snapshot,
         registered_jersey_size_snapshot,
+        registered_image_snapshot,
         registered_at,
         correction_requested_at,
         resubmission_count,
@@ -46,16 +51,29 @@ export async function GET() {
         tournament:tournaments (
           id,
           name,
-          tournament_date
+          tournament_date,
+          registration_fee,
+          payment_enabled,
+          upi_id,
+          payment_qr_url
         ),
         payments:payments (
+          id,
           payment_status,
-          amount
+          amount,
+          payment_method,
+          transaction_reference,
+          created_at
         )
       `
       )
-      .eq('created_by_auth_id', user.id)
       .order('registered_at', { ascending: false });
+
+    if (player?.id) {
+      regQuery = regQuery.or(`created_by_auth_id.eq.${user.id},player_id.eq.${player.id}`);
+    } else {
+      regQuery = regQuery.eq('created_by_auth_id', user.id);
+    }
 
     const { data: regData } = await regQuery;
     let registrations = regData || [];

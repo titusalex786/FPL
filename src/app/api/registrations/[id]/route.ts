@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { generateRegistrationReference } from '@/lib/utils/format';
+import { checkIsAdmin } from '@/lib/auth/is-admin';
+import { getSignedScreenshotUrl } from '@/lib/storage/upload';
 import { CANONICAL_ORGANISER_UPI_ID } from '@/lib/utils/upi';
 
 export async function GET(
@@ -9,60 +11,96 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = createAdminClient();
 
+    // 1. Authenticate user
+    const supabaseServer = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabaseServer.auth.getUser();
+
+    if (authErr || !user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
+    const supabaseAdmin = createAdminClient();
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-    let registration: any = null;
+    // 2. Query registration strictly by id or registration_number
+    let regQuery = supabaseAdmin
+      .from('registrations')
+      .select('*, player:players(*)');
 
     if (isUuid) {
-      const { data } = await supabase.from('registrations').select('*').eq('id', id).maybeSingle();
-      registration = data;
+      regQuery = regQuery.eq('id', id);
+    } else {
+      regQuery = regQuery.eq('registration_number', id);
     }
 
-    if (!registration) {
-      const { data } = await supabase.from('registrations').select('*').eq('registration_number', id).maybeSingle();
-      registration = data;
+    const { data: registration, error: regError } = await regQuery.maybeSingle();
+
+    if (regError || !registration) {
+      return NextResponse.json({ error: 'Registration record not found' }, { status: 404 });
     }
 
-    // Fallback 1: Retrieve the latest registration record from DB
-    if (!registration) {
-      const { data } = await supabase
-        .from('registrations')
-        .select('*')
-        .order('registered_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      registration = data;
-    }
-
-    // Fallback 2: Construct a default confirmed registration snapshot so pass receipt page NEVER breaks
-    if (!registration) {
-      const fallbackRef = id.startsWith('REG') || id.startsWith('FPL') ? id : generateRegistrationReference(2026);
-      registration = {
-        id: id || 'reg_default',
-        tournament_id: 'default_tournament',
-        player_id: 'default_player',
-        registration_number: fallbackRef,
-        registration_status: 'CONFIRMED',
-        registered_name_snapshot: 'Player Registration Pass',
-        registered_role_snapshot: 'ALL_ROUNDER',
-        registered_batting_style_snapshot: 'RIGHT_HAND',
-        registered_jersey_size_snapshot: 'M',
-        registered_image_snapshot: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400',
-        registered_at: new Date().toISOString(),
-      };
-    }
-
-    // Fetch associated player
-    const { data: player } = await supabase
+    // 3. Resolve user's player profile for ownership check
+    const { data: playerProfile } = await supabaseAdmin
       .from('players')
-      .select('*')
-      .eq('id', registration.player_id)
+      .select('id')
+      .eq('auth_user_id', user.id)
       .maybeSingle();
 
-    // Fetch latest payment
-    const { data: latestPayment } = await supabase
+    // 4. Verify authorization:
+    // a) DB-backed Admin or Manager
+    // b) User created the registration (created_by_auth_id === user.id)
+    // c) Registration player is linked to user's auth account
+    // d) Registration player_id matches user's player profile
+    // e) Team owner
+    const { isAdmin } = await checkIsAdmin();
+    let isAuthorized = isAdmin;
+
+    if (!isAuthorized) {
+      const regPlayer = registration.player as any;
+      const isCreator = registration.created_by_auth_id === user.id;
+      const isPlayerAuth = regPlayer?.auth_user_id === user.id;
+      const isPlayerId = Boolean(playerProfile?.id && registration.player_id === playerProfile.id);
+
+      if (isCreator || isPlayerAuth || isPlayerId) {
+        isAuthorized = true;
+      } else if (registration.team_owner_id) {
+        const { data: teamOwner } = await supabaseAdmin
+          .from('team_owners')
+          .select('id, user_id, auth_user_id, created_by_auth_id')
+          .eq('id', registration.team_owner_id)
+          .maybeSingle();
+
+        if (
+          teamOwner &&
+          (teamOwner.user_id === user.id ||
+            teamOwner.auth_user_id === user.id ||
+            teamOwner.created_by_auth_id === user.id)
+        ) {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      return NextResponse.json(
+        { error: 'You are not authorized to view this registration' },
+        { status: 403 }
+      );
+    }
+
+    // 5. Fetch associated tournament
+    const { data: tournament } = await supabaseAdmin
+      .from('tournaments')
+      .select('*')
+      .eq('id', registration.tournament_id)
+      .maybeSingle();
+
+    // 6. Fetch latest payment
+    const { data: latestPayment } = await supabaseAdmin
       .from('payments')
       .select('*')
       .eq('registration_id', registration.id)
@@ -70,21 +108,32 @@ export async function GET(
       .limit(1)
       .maybeSingle();
 
-    // Fetch tournament
-    const { data: tournament } = await supabase
-      .from('tournaments')
-      .select('*')
-      .eq('id', registration.tournament_id)
-      .maybeSingle();
+    // 7. Resolve signed screenshot URL if private object path exists
+    if (latestPayment?.screenshot_object_path) {
+      try {
+        const signedUrl = await getSignedScreenshotUrl(
+          latestPayment.screenshot_bucket || 'payment-screenshots',
+          latestPayment.screenshot_object_path,
+          1800
+        );
+        if (signedUrl) {
+          latestPayment.payment_screenshot_url = signedUrl;
+        }
+      } catch (err) {
+        console.error('[registrations/[id]] Failed to sign payment screenshot URL:', err);
+      }
+    }
+
+    const player = registration.player || {
+      id: registration.player_id,
+      email: user.email || 'player@fairplay.local',
+      full_name: registration.registered_name_snapshot,
+      jersey_size: registration.registered_jersey_size_snapshot,
+    };
 
     return NextResponse.json({
       registration,
-      player: player || {
-        id: registration.player_id,
-        email: 'player@fairplay.local',
-        full_name: registration.registered_name_snapshot,
-        jersey_size: registration.registered_jersey_size_snapshot,
-      },
+      player,
       skills: null,
       latestPayment: latestPayment || {
         payment_status: 'PENDING',
@@ -99,6 +148,7 @@ export async function GET(
       },
     });
   } catch (err: any) {
+    console.error('[registrations/[id]] Unhandled error:', err);
     return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
   }
 }

@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { checkIsAdmin } from '@/lib/auth/is-admin';
 import { uploadToStorageBucket, validateImageFileBuffer } from '@/lib/storage/upload';
+import { sendNotification } from '@/lib/notifications/create-notification';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -70,6 +71,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const VALID_JERSEY_SIZES = ['S', 'M', 'L', 'XL', 'XXL', '3XL'] as const;
 
     const validationErrors: string[] = [];
+
+    // Validate Name (min 2, max 100 characters)
+    const rawName = body.name !== undefined ? body.name : body.full_name;
+    if (rawName !== undefined) {
+      const trimmed = String(rawName).trim();
+      if (trimmed.length < 2) {
+        validationErrors.push('Name must be at least 2 characters');
+      }
+      if (trimmed.length > 100) {
+        validationErrors.push('Name must not exceed 100 characters');
+      }
+    }
 
     // Validate Jersey Name (max 30 chars)
     if (body.jersey_name !== undefined) {
@@ -173,8 +186,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const oldValues: Record<string, any> = {};
     const newValues: Record<string, any> = {};
 
+    // 0. Name — validated above
+    if (
+      (allowAllFields || requestedFields.some((f) => /name/i.test(f))) &&
+      rawName !== undefined
+    ) {
+      const val = String(rawName).trim();
+      oldValues['Player Name'] = registration.registered_name_snapshot;
+      newValues['Player Name'] = val;
+      updatePayload.registered_name_snapshot = val;
+    }
+
     // 1. Jersey Name — validated and normalised above
-    if ((allowAllFields || requestedFields.includes('Jersey Name')) && body.jersey_name !== undefined) {
+    if (
+      (allowAllFields || requestedFields.some((f) => /jersey\s*name/i.test(f))) &&
+      body.jersey_name !== undefined
+    ) {
       const val = String(body.jersey_name).trim();
       oldValues['Jersey Name'] = registration.registered_jersey_name_snapshot;
       newValues['Jersey Name'] = val;
@@ -182,7 +209,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // 2. Jersey Number — validated and normalised above
-    if ((allowAllFields || requestedFields.includes('Jersey Number')) && body.jersey_number !== undefined) {
+    if (
+      (allowAllFields || requestedFields.some((f) => /jersey\s*number/i.test(f))) &&
+      body.jersey_number !== undefined
+    ) {
       const val = String(body.jersey_number).trim();
       oldValues['Jersey Number'] = registration.registered_jersey_number_snapshot;
       newValues['Jersey Number'] = val;
@@ -190,7 +220,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // 3. Jersey Size — validated and normalised above
-    if ((allowAllFields || requestedFields.includes('Jersey Size')) && body.jersey_size !== undefined) {
+    if (
+      (allowAllFields || requestedFields.some((f) => /jersey\s*size/i.test(f))) &&
+      body.jersey_size !== undefined
+    ) {
       const val = String(body.jersey_size).trim().toUpperCase();
       oldValues['Jersey Size'] = registration.registered_jersey_size_snapshot;
       newValues['Jersey Size'] = val;
@@ -199,17 +232,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // 4. Profile Photo / Image
     if (
-      (allowAllFields || requestedFields.includes('Profile Image') || requestedFields.includes('Profile Photo')) &&
+      (allowAllFields || requestedFields.some((f) => /photo|image/i.test(f))) &&
       (body.profile_image !== undefined || body.profile_image_url !== undefined)
     ) {
-      const imgVal = body.profile_image || body.profile_image_url;
+      let imgVal = String(body.profile_image || body.profile_image_url || '').trim();
+      if (imgVal.startsWith('data:image/')) {
+        try {
+          const cleanBase64 = imgVal.replace(/^data:image\/\w+;base64,/, '');
+          const buffer = Buffer.from(cleanBase64, 'base64');
+          const validation = validateImageFileBuffer(buffer);
+          if (validation.isValid && validation.mimeType) {
+            const ext = validation.extension || (validation.mimeType === 'image/jpeg' ? 'jpg' : validation.mimeType === 'image/webp' ? 'webp' : 'png');
+            const objectPath = `${registration.tournament_id}/${registration.id}/${Date.now()}_profile_${Math.random().toString(36).substring(2, 6)}.${ext}`;
+            const uploadRes = await uploadToStorageBucket('profile-images', objectPath, buffer, validation.mimeType);
+            imgVal = uploadRes.publicUrl || objectPath;
+          }
+        } catch (uploadErr) {
+          console.warn('[correction] Profile image upload fallback to raw value:', uploadErr);
+        }
+      }
       oldValues['Profile Image'] = registration.registered_image_snapshot;
       newValues['Profile Image'] = imgVal ? 'Updated' : 'Cleared';
       updatePayload.registered_image_snapshot = imgVal;
     }
 
     // 5. Cricket Role — validated and normalised above
-    if ((allowAllFields || requestedFields.includes('Cricket Role')) && body.cricket_role !== undefined) {
+    if (
+      (allowAllFields || requestedFields.some((f) => /role/i.test(f))) &&
+      body.cricket_role !== undefined
+    ) {
       const val = String(body.cricket_role).trim().toUpperCase();
       oldValues['Cricket Role'] = registration.registered_role_snapshot;
       newValues['Cricket Role'] = val;
@@ -217,7 +268,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // 6. Batting Style — validated and normalised above
-    if ((allowAllFields || requestedFields.includes('Batting Style')) && body.batting_style !== undefined) {
+    if (
+      (allowAllFields || requestedFields.some((f) => /batting/i.test(f))) &&
+      body.batting_style !== undefined
+    ) {
       const val = String(body.batting_style).trim().toUpperCase();
       oldValues['Batting Style'] = registration.registered_batting_style_snapshot;
       newValues['Batting Style'] = val;
@@ -225,7 +279,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // 7. Bowling Style — validated and normalised above
-    if ((allowAllFields || requestedFields.includes('Bowling Style')) && body.bowling_style !== undefined) {
+    if (
+      (allowAllFields || requestedFields.some((f) => /bowling/i.test(f))) &&
+      body.bowling_style !== undefined
+    ) {
       const val = String(body.bowling_style).trim().toUpperCase();
       oldValues['Bowling Style'] = registration.registered_bowling_style_snapshot;
       newValues['Bowling Style'] = val;
@@ -317,8 +374,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           // Create a brand-new object — the original DB object is never touched
           return {
             ...entry,
+            remark: entry.remark || entry.original_remark || registration.admin_remarks,
+            original_remark: entry.original_remark || entry.remark || registration.admin_remarks,
+            requested_date: entry.requested_date || entry.requested_at || registration.correction_requested_at,
+            submitted_date: now,
             resolved_at: now,
             resolved_by_auth_id: user.id,
+            resubmission_count: (registration.resubmission_count || 0) + 1,
+            changed_fields: Object.keys(newValues),
+            previous_values: oldValues,
             old_values: oldValues,
             new_values: newValues,
           };
@@ -327,6 +391,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return entry;
       });
       updatePayload.correction_history = updatedHistory;
+    } else {
+      updatePayload.correction_history = [
+        ...existingHistory,
+        {
+          remark: registration.admin_remarks || 'Admin requested correction',
+          original_remark: registration.admin_remarks || 'Admin requested correction',
+          requested_date: registration.correction_requested_at || registration.updated_at || now,
+          submitted_date: now,
+          resolved_at: now,
+          resolved_by_auth_id: user.id,
+          resubmission_count: (registration.resubmission_count || 0) + 1,
+          changed_fields: Object.keys(newValues),
+          previous_values: oldValues,
+          old_values: oldValues,
+          new_values: newValues,
+        },
+      ];
     }
 
     const { error: updateErr } = await supabaseAdmin
@@ -342,31 +423,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Failed to update registration' }, { status: 500 });
     }
 
-    // Create admin notifications via batch insert (non-fatal failure)
+    // Create admin notifications via sendNotification (with duplicate suppression)
     const { data: adminUsers } = await supabaseAdmin
       .from('admin_users')
       .select('id')
-      .limit(5);
+      .limit(10);
+
+    const playerName = updatePayload.registered_name_snapshot || registration.registered_name_snapshot || 'Player';
+    const regNumber = registration.registration_number || '';
 
     if (adminUsers && adminUsers.length > 0) {
-      const notifications = adminUsers.map((adminUser: { id: string }) => ({
-        user_id: adminUser.id,
-        type: 'CORRECTION_SUBMITTED',
-        title: 'Correction Resubmitted',
-        message: `Player ${registration.registered_name_snapshot} (${registration.registration_number}) has resubmitted corrected details.`,
-        registration_id: registration.id,
-        tournament_id: registration.tournament_id,
-      }));
-
-      const { error: notifErr } = await supabaseAdmin
-        .from('notifications')
-        .insert(notifications);
-
-      if (notifErr) {
-        // Non-fatal: log but do not fail the correction response
-        console.error('[correction] Failed to insert admin notifications', {
-          operation: 'notifications.insert',
-          registrationId,
+      for (const adminUser of adminUsers) {
+        await sendNotification({
+          userId: adminUser.id,
+          type: 'CORRECTION_SUBMITTED',
+          title: 'Correction Resubmitted',
+          message: `Player has resubmitted registration after correction. (${playerName} - ${regNumber})`,
+          registrationId: registration.id,
+          tournamentId: registration.tournament_id,
         });
       }
     }

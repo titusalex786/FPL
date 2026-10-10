@@ -1,13 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { requireAdmin } from '@/lib/auth/is-admin';
 import { logAdminAction } from '@/lib/audit/logger';
+import { getAdminPlayerDetails } from '@/lib/admin/player-details';
 
 export const dynamic = 'force-dynamic';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function verifyAdminAuth() {
+  const supabase = await createServerSupabaseClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { authorized: false, status: 401, error: 'Authentication required', user: null };
+  }
+
+  const adminClient = createAdminClient();
+  const { data: adminEntry } = await adminClient
+    .from('admin_users')
+    .select('id, role, status')
+    .eq('id', user.id)
+    .eq('status', 'ACTIVE')
+    .maybeSingle();
+
+  if (!adminEntry) {
+    return { authorized: false, status: 403, error: 'Admin access required', user: null };
+  }
+
+  return { authorized: true, status: 200, error: null, user };
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const auth = await verifyAdminAuth();
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const { id } = await params;
+    if (!id || !UUID_REGEX.test(id)) {
+      return NextResponse.json({ error: 'Invalid Player or Registration ID' }, { status: 400 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const preferredRegistrationId = searchParams.get('registrationId');
+
+    const details = await getAdminPlayerDetails(id, preferredRegistrationId);
+    if (!details) {
+      return NextResponse.json({ error: 'Player or registration not found' }, { status: 404 });
+    }
+
+    return NextResponse.json(details);
+  } catch (err: any) {
+    console.error('Error in GET /api/admin/players/[id]:', err);
+    return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
+  }
+}
+
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireAdmin();
+    const auth = await verifyAdminAuth();
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
     const { id: playerId } = await params;
 
     if (!playerId) {
@@ -44,7 +101,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
 
     await logAdminAction({
-      adminUserId: user.id,
+      adminUserId: auth.user!.id,
       action: 'DELETE_PLAYER',
       entityType: 'PLAYER',
       entityId: playerId,

@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { formatDate, cricketRoleLabels } from '@/lib/utils/format';
 import { Download, Eye, CheckCircle2, ShieldCheck, Trophy, History, Trash2, AlertCircle, ExternalLink } from 'lucide-react';
+import { PlayerDetailsModal } from '@/components/admin/PlayerDetailsModal';
 
 export default function AdminPlayersPage() {
   const [players, setPlayers] = useState<any[]>([]);
@@ -41,6 +42,9 @@ export default function AdminPlayersPage() {
   // Screenshot Viewer
   const [screenshotViewUrl, setScreenshotViewUrl] = useState<string | null>(null);
   const [screenshotLoading, setScreenshotLoading] = useState(false);
+
+  // Player Details Modal
+  const [selectedDetailsItem, setSelectedDetailsItem] = useState<{ playerId: string; registrationId: string } | null>(null);
 
   const fetchPlayers = () => {
     setLoading(true);
@@ -364,6 +368,14 @@ export default function AdminPlayersPage() {
                       <ShieldCheck className="w-4 h-4" /> Confirmed
                     </span>
                   )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedDetailsItem({ playerId: item.player_id, registrationId: item.id })}
+                    leftIcon={<Eye className="w-3.5 h-3.5 text-emerald-400" />}
+                  >
+                    Details
+                  </Button>
                   <Button variant="secondary" size="sm" onClick={() => setSelectedPlayerHistory(item)} leftIcon={<History className="w-3.5 h-3.5 text-sky-400" />}>
                     History
                   </Button>
@@ -468,6 +480,14 @@ export default function AdminPlayersPage() {
                               <ShieldCheck className="w-4 h-4" /> Confirmed
                             </span>
                           )}
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setSelectedDetailsItem({ playerId: item.player_id, registrationId: item.id })}
+                            leftIcon={<Eye className="w-3.5 h-3.5 text-emerald-400" />}
+                          >
+                            Details
+                          </Button>
                           <Button variant="secondary" size="sm" onClick={() => setSelectedPlayerHistory(item)} leftIcon={<History className="w-3.5 h-3.5 text-sky-400" />}>
                             History ({item.tournamentHistoryCount || 1})
                           </Button>
@@ -641,6 +661,14 @@ export default function AdminPlayersPage() {
           </form>
         )}
       </Modal>
+
+      {/* PLAYER DETAILS MODAL */}
+      <PlayerDetailsModal
+        isOpen={Boolean(selectedDetailsItem)}
+        onClose={() => setSelectedDetailsItem(null)}
+        playerId={selectedDetailsItem?.playerId}
+        registrationId={selectedDetailsItem?.registrationId}
+      />
     </div>
   );
 }

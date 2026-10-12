@@ -47,11 +47,17 @@ export default function ManagerDashboardPage() {
     <div className="space-y-8 animate-fadeIn">
       {/* Top Banner */}
       <div className="border-b border-slate-800 pb-5">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="px-2.5 py-1 rounded-full bg-teal-950 border border-teal-500/40 text-teal-300 font-bold text-xs flex items-center gap-1.5">
             <Briefcase className="w-3.5 h-3.5" />
             Manager Delegation Access
           </span>
+          <Link
+            href="/manager/auctions/new"
+            className="rounded-lg bg-teal-500 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-teal-400"
+          >
+            Create auction
+          </Link>
         </div>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white mt-2">Manager Portal</h1>
         <p className="text-xs sm:text-sm text-slate-400 mt-1">

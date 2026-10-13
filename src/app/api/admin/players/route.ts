@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireManager } from '@/lib/auth/is-manager';
-import { getSignedScreenshotUrl } from '@/lib/storage/upload';
 
 export async function GET(req: NextRequest) {
   try {
@@ -151,41 +150,37 @@ export async function GET(req: NextRequest) {
       });
     });
 
-    // Resolve screenshot_object_path into signed URLs for payments
-    const enrichedPlayers = await Promise.all(
-      filtered.map(async (item: any) => {
-        const history = playerHistoryMap[item.player_id] || [];
-        const enrichedPayments = item.payments
-          ? await Promise.all(
-              (item.payments as any[]).map(async (p: any) => {
-                let resolvedScreenshotUrl = p.payment_screenshot_url || '';
-                if (p.screenshot_object_path) {
-                  try {
-                    resolvedScreenshotUrl = await getSignedScreenshotUrl(
-                      p.screenshot_bucket || 'payment-screenshots',
-                      p.screenshot_object_path,
-                      900
-                    );
-                  } catch {
-                    // Keep fallback URL if signed URL generation fails
-                  }
-                }
-                return {
-                  ...p,
-                  payment_screenshot_url: resolvedScreenshotUrl,
-                };
-              })
-            )
-          : item.payments;
-        return {
-          ...item,
-          registered_image_snapshot: '/logo.png',
-          payments: enrichedPayments,
-          tournamentHistoryCount: history.length || 1,
-          tournamentHistory: history,
-        };
-      })
-    );
+    // Return safe metadata without pre-generating signed URLs upfront
+    const enrichedPlayers = filtered.map((item: any) => {
+      const history = playerHistoryMap[item.player_id] || [];
+      const enrichedPayments = item.payments
+        ? (item.payments as any[]).map((p: any) => ({
+            id: p.id,
+            amount: p.amount,
+            payment_status: p.payment_status,
+            has_screenshot: Boolean(p.screenshot_object_path || p.payment_screenshot_url),
+            payment_screenshot_url: null,
+            transaction_reference: p.transaction_reference,
+            verification_note: p.verification_note,
+            verified_by: p.verified_by,
+            verified_at: p.verified_at,
+            created_at: p.created_at,
+          }))
+        : item.payments;
+
+      const hasScreenshot = Array.isArray(enrichedPayments)
+        ? enrichedPayments.some((p: any) => p.has_screenshot)
+        : false;
+
+      return {
+        ...item,
+        has_screenshot: hasScreenshot,
+        registered_image_snapshot: '/logo.png',
+        payments: enrichedPayments,
+        tournamentHistoryCount: history.length || 1,
+        tournamentHistory: history,
+      };
+    });
 
     return NextResponse.json({
       players: enrichedPlayers,

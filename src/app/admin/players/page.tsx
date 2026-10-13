@@ -9,7 +9,7 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { formatDate, cricketRoleLabels } from '@/lib/utils/format';
-import { Download, Eye, CheckCircle2, ShieldCheck, Trophy, History, Trash2, AlertCircle, ExternalLink } from 'lucide-react';
+import { Download, Eye, CheckCircle2, ShieldCheck, Trophy, History, Trash2, AlertCircle, ExternalLink, Loader2 } from 'lucide-react';
 import { PlayerDetailsModal } from '@/components/admin/PlayerDetailsModal';
 
 export default function AdminPlayersPage() {
@@ -41,7 +41,7 @@ export default function AdminPlayersPage() {
 
   // Screenshot Viewer
   const [screenshotViewUrl, setScreenshotViewUrl] = useState<string | null>(null);
-  const [screenshotLoading, setScreenshotLoading] = useState(false);
+  const [screenshotLoadingId, setScreenshotLoadingId] = useState<string | null>(null);
 
   // Player Details Modal
   const [selectedDetailsItem, setSelectedDetailsItem] = useState<{ playerId: string; registrationId: string } | null>(null);
@@ -73,28 +73,27 @@ export default function AdminPlayersPage() {
   // Authoritative: use registration_status, not payment_status
   const isConfirmed = (item: any) => item.registration_status === 'CONFIRMED';
 
-  const getScreenshotPath = (item: any): string | null => {
+  const getScreenshotPath = (item: any): boolean => {
+    if (item.has_screenshot) return true;
     const pay = Array.isArray(item.payments) ? item.payments[0] : item.payments;
-    return pay?.screenshot_object_path || pay?.payment_screenshot_url || null;
+    return Boolean(pay?.has_screenshot || pay?.screenshot_object_path || pay?.payment_screenshot_url);
   };
 
   const handleViewScreenshot = async (item: any) => {
     const pay = Array.isArray(item.payments) ? item.payments[0] : item.payments;
-    // The API already resolved object paths to signed URLs
     const resolvedUrl = pay?.payment_screenshot_url;
-    const objectPath = pay?.screenshot_object_path;
 
-    if (resolvedUrl && (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://'))) {
+    if (resolvedUrl && (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://') || resolvedUrl.startsWith('data:image/'))) {
       setScreenshotViewUrl(resolvedUrl);
       return;
     }
 
-    const path = objectPath || resolvedUrl;
-    if (!path) return;
-
-    setScreenshotLoading(true);
+    setScreenshotLoadingId(item.id);
     try {
-      const res = await fetch(`/api/admin/payments/screenshot-url?path=${encodeURIComponent(path)}`);
+      const queryParam = pay?.id
+        ? `paymentId=${encodeURIComponent(pay.id)}`
+        : `registrationId=${encodeURIComponent(item.id)}`;
+      const res = await fetch(`/api/admin/payments/screenshot-url?${queryParam}`);
       const data = await res.json();
       if (data.signedUrl) {
         setScreenshotViewUrl(data.signedUrl);
@@ -104,7 +103,7 @@ export default function AdminPlayersPage() {
     } catch {
       alert('Network error loading screenshot');
     } finally {
-      setScreenshotLoading(false);
+      setScreenshotLoadingId(null);
     }
   };
 
@@ -227,7 +226,7 @@ export default function AdminPlayersPage() {
     if (rs === 'CORRECTION_REQUESTED') return 'Correction Requested';
     if (rs === 'WAITING_LIST') return 'Waitlist';
     const pay = Array.isArray(item.payments) ? item.payments[0] : item.payments;
-    if (pay?.screenshot_object_path || pay?.payment_screenshot_url) return 'Screenshot Uploaded';
+    if (pay?.screenshot_object_path || pay?.payment_screenshot_url || pay?.has_screenshot || item?.has_screenshot) return 'Screenshot Uploaded';
     return 'Pending Verification';
   };
 
@@ -347,10 +346,15 @@ export default function AdminPlayersPage() {
                 {hasScreenshot && (
                   <button
                     onClick={() => handleViewScreenshot(item)}
-                    disabled={screenshotLoading}
+                    disabled={screenshotLoadingId === item.id}
                     className="w-full text-xs text-emerald-400 border border-emerald-800/50 rounded-xl py-1.5 hover:bg-emerald-950/30 transition-colors flex items-center justify-center gap-1.5"
                   >
-                    <Eye className="w-3.5 h-3.5" /> View Payment Screenshot
+                    {screenshotLoadingId === item.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Eye className="w-3.5 h-3.5" />
+                    )}
+                    <span>View Payment Screenshot</span>
                   </button>
                 )}
                 <div className="pt-1 flex items-center gap-2 flex-wrap">
@@ -455,10 +459,15 @@ export default function AdminPlayersPage() {
                         {hasScreenshot ? (
                           <button
                             onClick={() => handleViewScreenshot(item)}
-                            disabled={screenshotLoading}
+                            disabled={screenshotLoadingId === item.id}
                             className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 border border-emerald-800/50 rounded-lg px-2 py-1 transition-colors hover:bg-emerald-950/30"
                           >
-                            <Eye className="w-3 h-3" /> View
+                            {screenshotLoadingId === item.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Eye className="w-3 h-3" />
+                            )}
+                            <span>View</span>
                           </button>
                         ) : (
                           <span className="text-xs text-slate-600">—</span>

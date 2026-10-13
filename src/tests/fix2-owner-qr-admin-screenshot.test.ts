@@ -185,32 +185,29 @@ describe('Fix #2 — Owner QR + Admin Screenshot Regression', () => {
       expect(json.players).toBeDefined();
       expect(json.players.length).toBeGreaterThan(0);
 
-      // The payment should now have a resolved signed URL
+      // P1: List returns safe metadata without pre-generating signed URLs upfront
       const payment = json.players[0].payments?.[0];
       expect(payment).toBeDefined();
-      expect(payment.payment_screenshot_url).toContain('payment-screenshots');
-      expect(payment.payment_screenshot_url).toContain('token=');
+      expect(payment.has_screenshot).toBe(true);
+      expect(payment.payment_screenshot_url).toBeNull();
+      expect(payment.screenshot_object_path).toBeUndefined();
 
-      // Verify getSignedScreenshotUrl was called with the right arguments
-      expect(getSignedScreenshotUrl).toHaveBeenCalledWith(
-        'payment-screenshots',
-        't-1/reg-1/1234_abcd.png',
-        900
-      );
+      // Zero Storage calls during initial player list load
+      expect(getSignedScreenshotUrl).not.toHaveBeenCalled();
     });
 
-    it('6. Admin Players API does not depend on payment_screenshot_url stored in DB', () => {
+    it('6. Admin Players API does not call getSignedScreenshotUrl in list path', () => {
       const source = fs.readFileSync(
         path.join(process.cwd(), 'src/app/api/admin/players/route.ts'),
         'utf-8'
       );
 
-      // Must select screenshot_object_path from DB
+      // Must select screenshot_object_path from DB to compute has_screenshot
       expect(source).toContain('screenshot_object_path');
       expect(source).toContain('screenshot_bucket');
 
-      // Must call getSignedScreenshotUrl to resolve
-      expect(source).toContain('getSignedScreenshotUrl');
+      // Must NOT call getSignedScreenshotUrl in list route (on-demand endpoint handles this)
+      expect(source).not.toContain('getSignedScreenshotUrl');
     });
 
     it('7. Missing screenshot_object_path is handled safely', async () => {
@@ -280,12 +277,13 @@ describe('Fix #2 — Owner QR + Admin Screenshot Regression', () => {
 
       expect(res.status).toBe(200);
 
-      // getSignedScreenshotUrl should NOT be called when screenshot_object_path is null
+      // getSignedScreenshotUrl should NOT be called
       expect(getSignedScreenshotUrl).not.toHaveBeenCalled();
 
-      // payment_screenshot_url should remain empty/falsy
+      // has_screenshot should be false
       const payment = json.players[0].payments?.[0];
-      expect(payment.payment_screenshot_url).toBeFalsy();
+      expect(payment.has_screenshot).toBe(false);
+      expect(payment.payment_screenshot_url).toBeNull();
     });
 
     it('8. Admin authorization is required (managed by requireManager)', () => {
@@ -298,13 +296,13 @@ describe('Fix #2 — Owner QR + Admin Screenshot Regression', () => {
       expect(source).toContain('await requireManager()');
     });
 
-    it('9. Signed URLs use time-limited expiration (900s)', () => {
+    it('9. Signed URLs use time-limited expiration (900s) on on-demand endpoint', () => {
       const source = fs.readFileSync(
-        path.join(process.cwd(), 'src/app/api/admin/players/route.ts'),
+        path.join(process.cwd(), 'src/app/api/admin/payments/screenshot-url/route.ts'),
         'utf-8'
       );
 
-      // Must pass 900 second expiry to match tournament summary API
+      // Must pass 900 second expiry to keep URLs short-lived
       expect(source).toMatch(/getSignedScreenshotUrl\([^)]*900\s*\)/);
     });
 

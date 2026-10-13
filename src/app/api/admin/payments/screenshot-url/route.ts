@@ -8,57 +8,100 @@ export async function GET(req: NextRequest) {
     await requireManager();
     const { searchParams } = new URL(req.url);
     const path = searchParams.get('path');
+    const paymentId = searchParams.get('paymentId');
+    const registrationId = searchParams.get('registrationId');
 
-    if (!path || path.trim() === '') {
-      return NextResponse.json({ error: 'Missing screenshot path' }, { status: 400 });
+    if (!path && !paymentId && !registrationId) {
+      return NextResponse.json({ error: 'Missing screenshot path or identifier' }, { status: 400 });
     }
 
-    const cleanPath = path.trim();
     const supabase = createAdminClient();
-
-    // 1. Verify database ownership against payments table
-    const { data: byObjectPath } = await supabase
-      .from('payments')
-      .select('id, screenshot_object_path, payment_screenshot_url, screenshot_bucket')
-      .eq('screenshot_object_path', cleanPath)
-      .maybeSingle();
-
-    const { data: byUrl } = !byObjectPath
-      ? await supabase
-          .from('payments')
-          .select('id, screenshot_object_path, payment_screenshot_url, screenshot_bucket')
-          .eq('payment_screenshot_url', cleanPath)
-          .maybeSingle()
-      : { data: null };
-
-    const paymentRecord = byObjectPath || byUrl;
+    let paymentRecord: any = null;
+    let targetPath = '';
     let isAuthorizedPath = false;
-    let targetPath = cleanPath;
+
+    // 1. Look up by paymentId if provided
+    if (paymentId && paymentId.trim() !== '') {
+      const { data } = await supabase
+        .from('payments')
+        .select('id, screenshot_object_path, payment_screenshot_url, screenshot_bucket')
+        .eq('id', paymentId.trim())
+        .maybeSingle();
+      paymentRecord = data;
+    }
+    // 2. Look up by registrationId if provided
+    else if (registrationId && registrationId.trim() !== '') {
+      const { data } = await supabase
+        .from('payments')
+        .select('id, screenshot_object_path, payment_screenshot_url, screenshot_bucket')
+        .eq('registration_id', registrationId.trim())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      paymentRecord = data;
+    }
+    // 3. Fallback to path lookup
+    else if (path && path.trim() !== '') {
+      const cleanPath = path.trim();
+      const { data: byObjectPath } = await supabase
+        .from('payments')
+        .select('id, screenshot_object_path, payment_screenshot_url, screenshot_bucket')
+        .eq('screenshot_object_path', cleanPath)
+        .maybeSingle();
+
+      const { data: byUrl } = !byObjectPath
+        ? await supabase
+            .from('payments')
+            .select('id, screenshot_object_path, payment_screenshot_url, screenshot_bucket')
+            .eq('payment_screenshot_url', cleanPath)
+            .maybeSingle()
+        : { data: null };
+
+      paymentRecord = byObjectPath || byUrl;
+      targetPath = cleanPath;
+    }
 
     if (paymentRecord) {
       const bucket = paymentRecord.screenshot_bucket || 'payment-screenshots';
       if (bucket === 'payment-screenshots') {
         isAuthorizedPath = true;
       }
-      
-      if (paymentRecord.screenshot_object_path) {
-        targetPath = paymentRecord.screenshot_object_path;
-      }
+      targetPath = paymentRecord.screenshot_object_path || paymentRecord.payment_screenshot_url || targetPath;
     } else {
       // Fallback check on team_owners table
-      const { data: ownerRecord } = await supabase
-        .from('team_owners')
-        .select('id, payment_screenshot_url')
-        .eq('payment_screenshot_url', cleanPath)
-        .maybeSingle();
+      if (registrationId && registrationId.trim() !== '') {
+        const { data: ownerRecord } = await supabase
+          .from('team_owners')
+          .select('id, payment_screenshot_url')
+          .eq('owner_registration_id', registrationId.trim())
+          .maybeSingle();
 
-      if (ownerRecord) {
-        isAuthorizedPath = true;
+        if (ownerRecord && ownerRecord.payment_screenshot_url) {
+          isAuthorizedPath = true;
+          targetPath = ownerRecord.payment_screenshot_url;
+        }
+      } else if (path && path.trim() !== '') {
+        const cleanPath = path.trim();
+        const { data: ownerRecord } = await supabase
+          .from('team_owners')
+          .select('id, payment_screenshot_url')
+          .eq('payment_screenshot_url', cleanPath)
+          .maybeSingle();
+
+        if (ownerRecord) {
+          isAuthorizedPath = true;
+          targetPath = cleanPath;
+        }
       }
     }
 
-    if (!isAuthorizedPath) {
+    if (!isAuthorizedPath || !targetPath) {
       return NextResponse.json({ error: 'Receipt reference needs reconciliation' }, { status: 404 });
+    }
+
+    // Direct image URL or base64
+    if (targetPath.startsWith('http://') || targetPath.startsWith('https://') || targetPath.startsWith('data:image/')) {
+      return NextResponse.json({ signedUrl: targetPath });
     }
 
     // Attempt to fix legacy paths that might accidentally include the bucket name
@@ -66,7 +109,7 @@ export async function GET(req: NextRequest) {
       targetPath = targetPath.substring('payment-screenshots/'.length);
     }
 
-    // 2. Always generate signed URL strictly for payment-screenshots bucket with 900s expiry
+    // Generate signed URL strictly for payment-screenshots bucket with 900s expiry
     const signedUrl = await getSignedScreenshotUrl('payment-screenshots', targetPath, 900);
     
     if (!signedUrl) {

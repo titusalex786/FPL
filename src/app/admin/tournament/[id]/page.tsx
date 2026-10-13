@@ -51,7 +51,7 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [loadingReceipt, setLoadingReceipt] = useState(false);
+  const [loadingReceiptId, setLoadingReceiptId] = useState<string | null>(null);
 
   // Correction Request State
   const [correctionModalOpen, setCorrectionModalOpen] = useState(false);
@@ -66,13 +66,13 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
     'Payment Screenshot', 'Transaction Reference'
   ];
 
-  const handleViewReceipt = async (url: string | null | undefined) => {
+  const handleViewReceipt = async (url: string | null | undefined, rowId?: string) => {
     if (!url || url.trim() === '') return;
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/')) {
       setPreviewImageUrl(url);
       return;
     }
-    setLoadingReceipt(true);
+    if (rowId) setLoadingReceiptId(rowId);
     try {
       const res = await fetch(`/api/admin/payments/screenshot-url?path=${encodeURIComponent(url)}`);
       const resData = await res.json();
@@ -84,7 +84,7 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
     } catch {
       setActionMessage('Network error fetching signed screenshot URL');
     } finally {
-      setLoadingReceipt(false);
+      if (rowId) setLoadingReceiptId(null);
     }
   };
 
@@ -626,8 +626,8 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
                         <Button
                           variant="outline"
                           size="sm"
-                          isLoading={loadingReceipt}
-                          onClick={() => handleViewReceipt(r.payment.payment_screenshot_url)}
+                          isLoading={loadingReceiptId === r.id}
+                          onClick={() => handleViewReceipt(r.payment.payment_screenshot_url, r.id)}
                           leftIcon={<Eye className="w-3.5 h-3.5 text-sky-400" />}
                         >
                           View Receipt
@@ -747,11 +747,15 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
                   <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
                     {o.payment_screenshot_url ? (
                       <button
-                        onClick={() => handleViewReceipt(o.payment_screenshot_url)}
-                        disabled={loadingReceipt}
+                        onClick={() => handleViewReceipt(o.payment_screenshot_url, o.id)}
+                        disabled={loadingReceiptId === o.id}
                         className="px-2.5 py-1 bg-sky-950/80 border border-sky-500/40 text-sky-300 hover:bg-sky-900 font-semibold text-xs rounded-xl transition-colors inline-flex items-center gap-1"
                       >
-                        <Eye className="w-3.5 h-3.5 text-sky-400" />
+                        {loadingReceiptId === o.id ? (
+                          <Loader2 className="w-3.5 h-3.5 text-sky-400 animate-spin" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5 text-sky-400" />
+                        )}
                         <span>View Receipt</span>
                       </button>
                     ) : (

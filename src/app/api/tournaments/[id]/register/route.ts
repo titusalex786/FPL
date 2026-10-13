@@ -90,6 +90,7 @@ export async function POST(
         profile_image_url: finalProfileImageUrl,
         cricket_role: data.cricketRole,
         batting_style: data.battingStyle || null,
+        bowling_style: data.bowlingStyle || null,
         jersey_name: effectiveJerseyName,
         jersey_number: effectiveJerseyNumber,
         is_tournament_only: true,
@@ -118,6 +119,7 @@ export async function POST(
         profile_image_url: finalProfileImageUrl,
         cricket_role: data.cricketRole,
         batting_style: data.battingStyle || null,
+        bowling_style: data.bowlingStyle || null,
         jersey_name: effectiveJerseyName,
         jersey_number: effectiveJerseyNumber,
         jersey_size: data.jerseySize || null,
@@ -136,6 +138,7 @@ export async function POST(
         delete playerPayload.jersey_name;
         delete playerPayload.jersey_number;
         delete playerPayload.batting_style;
+        delete playerPayload.bowling_style;
 
         const fallbackRes = await supabaseAdmin
           .from('players')
@@ -214,6 +217,7 @@ export async function POST(
       registered_jersey_number_snapshot: effectiveJerseyNumber,
       registered_role_snapshot: data.cricketRole,
       registered_batting_style_snapshot: data.battingStyle || null,
+      registered_bowling_style_snapshot: data.bowlingStyle || null,
       registered_jersey_size_snapshot: data.jerseySize || null,
       registered_image_snapshot: finalProfileImageUrl,
     };
@@ -229,6 +233,7 @@ export async function POST(
       delete regPayload.registered_jersey_number_snapshot;
       delete regPayload.registered_jersey_size_snapshot;
       delete regPayload.registered_batting_style_snapshot;
+      delete regPayload.registered_bowling_style_snapshot;
       delete regPayload.registration_type;
       delete regPayload.status;
 

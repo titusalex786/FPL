@@ -159,6 +159,9 @@ export async function POST(req: NextRequest) {
       jersey_size: data.jerseySize || null,
       updated_at: new Date().toISOString(),
     };
+    if (data.bowlingStyle !== undefined) {
+      playerPayload.bowling_style = data.bowlingStyle || null;
+    }
 
     let { data: updatedPlayer, error } = await supabaseAdmin
       .from('players')
@@ -169,6 +172,7 @@ export async function POST(req: NextRequest) {
     if (error && error.message?.includes('column')) {
       delete playerPayload.jersey_size;
       delete playerPayload.batting_style;
+      delete playerPayload.bowling_style;
 
       const fallbackRes = await supabaseAdmin
         .from('players')

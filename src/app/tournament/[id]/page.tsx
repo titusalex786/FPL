@@ -12,10 +12,12 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { JerseyInfoTooltip } from '@/components/ui/JerseyInfoTooltip';
 import { formatPaiseToINR, formatDate, cricketRoleLabels } from '@/lib/utils/format';
-import { DbTournament, CricketRole, BattingStyle, JerseySize } from '@/types';
+import { DbTournament, CricketRole, BattingStyle, BowlingStyle, JerseySize } from '@/types';
 import { Trophy, Calendar, Users, ShieldAlert, CheckCircle2, ArrowRight, Upload, Image as ImageIcon, Lock, Crown, Clock, UserCheck, UserPlus } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { TeamOwnerRegistrationModal } from '@/components/register/TeamOwnerRegistrationModal';
+
+const BOWLING_ROLES: CricketRole[] = ['BOWLER', 'ALL_ROUNDER', 'BOWLER_WICKETKEEPER'];
 
 export default function PublicTournamentPage() {
   const params = useParams();
@@ -30,6 +32,7 @@ export default function PublicTournamentPage() {
   const [waitlistCount, setWaitlistCount] = useState<number>(0);
   const [availableSlots, setAvailableSlots] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
 
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isOwnerModalOpen, setIsOwnerModalOpen] = useState(false);
@@ -43,6 +46,7 @@ export default function PublicTournamentPage() {
   const [profileImageUrl, setProfileImageUrl] = useState('');
   const [cricketRole, setCricketRole] = useState<CricketRole>('BATSMAN');
   const [battingStyle, setBattingStyle] = useState<BattingStyle>('RIGHT_HAND');
+  const [bowlingStyle, setBowlingStyle] = useState<BowlingStyle>('DOESNT_BOWL');
   const [jerseyName, setJerseyName] = useState('');
   const [jerseyNumber, setJerseyNumber] = useState('');
   const [jerseySize, setJerseySize] = useState<JerseySize>('M');
@@ -84,35 +88,41 @@ export default function PublicTournamentPage() {
       .finally(() => setLoading(false));
 
     // 2. Fetch authenticated user & prefill persistent profile
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setCurrentUser(user);
-        setEmail(user.email || '');
+    supabase.auth.getUser()
+      .then(({ data: { user } }) => {
+        if (user) {
+          setCurrentUser(user);
+          setEmail(user.email || '');
 
-        fetch('/api/players/profile')
-          .then((res) => res.json())
-          .then((pData) => {
-            const defaultName = (user.email || '')
-              .split('@')[0]
-              .replace(/[._-]/g, ' ')
-              .replace(/\b\w/g, (c: string) => c.toUpperCase());
+          fetch('/api/players/profile')
+            .then((res) => res.json())
+            .then((pData) => {
+              const defaultName = (user.email || '')
+                .split('@')[0]
+                .replace(/[._-]/g, ' ')
+                .replace(/\b\w/g, (c: string) => c.toUpperCase());
 
-            if (pData.player) {
-              setFullName(pData.player.full_name || defaultName);
-              setProfileImageUrl(pData.player.profile_image_url || '');
-              setCricketRole(pData.player.cricket_role || 'BATSMAN');
-              setBattingStyle(pData.player.batting_style || 'RIGHT_HAND');
-              setJerseySize(pData.player.jersey_size || 'M');
-              setJerseyName(pData.player.jersey_name || pData.player.full_name || defaultName);
-              setJerseyNumber(pData.player.jersey_number || '');
-            } else {
-              setFullName(defaultName);
-              setJerseyName(defaultName);
-            }
-          })
-          .catch(() => {});
-      }
-    });
+              if (pData.player) {
+                const role = pData.player.cricket_role || 'BATSMAN';
+                setFullName(pData.player.full_name || defaultName);
+                setProfileImageUrl(pData.player.profile_image_url || '');
+                setCricketRole(role);
+                setBattingStyle(pData.player.batting_style || 'RIGHT_HAND');
+                setBowlingStyle(pData.player.bowling_style || (BOWLING_ROLES.includes(role) ? '' : 'DOESNT_BOWL'));
+                setJerseySize(pData.player.jersey_size || 'M');
+                setJerseyName(pData.player.jersey_name || pData.player.full_name || defaultName);
+                setJerseyNumber(pData.player.jersey_number || '');
+              } else {
+                setFullName(defaultName);
+                setJerseyName(defaultName);
+              }
+            })
+            .catch(() => {});
+        }
+      })
+      .finally(() => {
+        setAuthLoading(false);
+      });
   }, [id, supabase]);
 
   const handleTargetChange = (target: 'SELF' | 'OTHER') => {
@@ -126,6 +136,7 @@ export default function PublicTournamentPage() {
       setProfileImageUrl('');
       setCricketRole('BATSMAN');
       setBattingStyle('RIGHT_HAND');
+      setBowlingStyle('DOESNT_BOWL');
       setJerseySize('M');
       setJerseyName('');
       setJerseyNumber('');
@@ -135,10 +146,12 @@ export default function PublicTournamentPage() {
         .then((res) => res.json())
         .then((pData) => {
           if (pData.player) {
+            const role = pData.player.cricket_role || 'BATSMAN';
             setFullName(pData.player.full_name || '');
             setProfileImageUrl(pData.player.profile_image_url || '');
-            setCricketRole(pData.player.cricket_role || 'BATSMAN');
+            setCricketRole(role);
             setBattingStyle(pData.player.batting_style || 'RIGHT_HAND');
+            setBowlingStyle(pData.player.bowling_style || (BOWLING_ROLES.includes(role) ? '' : 'DOESNT_BOWL'));
             setJerseySize(pData.player.jersey_size || 'M');
             setJerseyName(pData.player.jersey_name || pData.player.full_name || '');
             setJerseyNumber(pData.player.jersey_number || '');
@@ -146,6 +159,14 @@ export default function PublicTournamentPage() {
         })
         .catch(() => {});
     }
+  };
+
+  const handleCricketRoleChange = (role: CricketRole) => {
+    setCricketRole(role);
+    setBowlingStyle((current) => {
+      if (!BOWLING_ROLES.includes(role)) return 'DOESNT_BOWL';
+      return current === 'DOESNT_BOWL' ? '' : current;
+    });
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -249,6 +270,7 @@ export default function PublicTournamentPage() {
           profileImageUrl,
           cricketRole,
           battingStyle,
+          bowlingStyle,
           jerseySize,
           jerseyName: effectiveJerseyName,
           jerseyNumber: jerseyNumber.trim(),
@@ -419,7 +441,12 @@ export default function PublicTournamentPage() {
                   </div>
                 )}
 
-                {!currentUser ? (
+                {authLoading ? (
+                  <div className="p-6 bg-slate-950/80 border border-slate-800 rounded-2xl text-center space-y-3">
+                    <div className="w-6 h-6 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin mx-auto" />
+                    <p className="text-xs text-slate-400">Checking your sign-in...</p>
+                  </div>
+                ) : !currentUser ? (
                   <div className="p-6 bg-slate-950/80 border border-slate-800 rounded-2xl text-center space-y-4">
                     <Lock className="w-10 h-10 text-emerald-400 mx-auto" />
                     <h3 className="text-base font-bold text-white">Authentication Required</h3>
@@ -563,7 +590,7 @@ export default function PublicTournamentPage() {
                         label="Cricket Role *"
                         required
                         value={cricketRole}
-                        onChange={(e) => setCricketRole(e.target.value as CricketRole)}
+                        onChange={(e) => handleCricketRoleChange(e.target.value as CricketRole)}
                         options={[
                           { value: 'BATSMAN', label: 'Batsman' },
                           { value: 'BOWLER', label: 'Bowler' },
@@ -582,6 +609,24 @@ export default function PublicTournamentPage() {
                         options={[
                           { value: 'RIGHT_HAND', label: 'Right-hand' },
                           { value: 'LEFT_HAND', label: 'Left-hand' },
+                        ]}
+                      />
+
+                      <Select
+                        label={`Bowling Style${['BOWLER', 'ALL_ROUNDER', 'BOWLER_WICKETKEEPER'].includes(cricketRole) ? ' *' : ''}`}
+                        required={['BOWLER', 'ALL_ROUNDER', 'BOWLER_WICKETKEEPER'].includes(cricketRole)}
+                        disabled={!BOWLING_ROLES.includes(cricketRole)}
+                        value={bowlingStyle}
+                        onChange={(e) => setBowlingStyle(e.target.value as BowlingStyle)}
+                        options={[
+                          { value: '', label: 'Select Bowling Style' },
+                          { value: 'DOESNT_BOWL', label: "Doesn't Bowl" },
+                          { value: 'RIGHT_ARM_FAST', label: 'Right-arm Fast' },
+                          { value: 'RIGHT_ARM_MEDIUM', label: 'Right-arm Medium' },
+                          { value: 'RIGHT_ARM_SPIN', label: 'Right-arm Spin' },
+                          { value: 'LEFT_ARM_FAST', label: 'Left-arm Fast' },
+                          { value: 'LEFT_ARM_MEDIUM', label: 'Left-arm Medium' },
+                          { value: 'LEFT_ARM_SPIN', label: 'Left-arm Spin' },
                         ]}
                       />
                     </div>

@@ -86,11 +86,15 @@ function RegisterContent() {
           }));
 
           if (player) {
+            const playerRole = player.cricket_role || 'BATSMAN';
             setCricketData((prev) => ({
               ...prev,
-              primaryRole: player.cricket_role || 'BATSMAN',
+              primaryRole: playerRole,
               battingStyle: player.batting_style || 'RIGHT_HAND',
-              bowlingStyle: player.bowling_style || 'DOESNT_BOWL',
+              bowlingStyle: player.bowling_style ||
+                (['BOWLER', 'ALL_ROUNDER', 'BOWLER_WICKETKEEPER'].includes(playerRole)
+                  ? ''
+                  : 'DOESNT_BOWL'),
               jerseyName: player.jersey_name || player.full_name || defaultName,
               jerseyNumber: player.jersey_number || '',
               jerseySize: player.jersey_size || 'M',
@@ -156,7 +160,7 @@ function RegisterContent() {
         email: personalData.email || (personalData.mobile ? `${personalData.mobile}@fairplay.local` : ''),
         profileImageUrl: personalData.profilePhotoPath,
         profilePhotoPath: personalData.profilePhotoPath,
-        cricketRole: (cricketData.primaryRole === 'WICKETKEEPER' || cricketData.primaryRole === 'BATSMAN_BOWLER' ? 'ALL_ROUNDER' : cricketData.primaryRole),
+        cricketRole: cricketData.primaryRole,
         primaryRole: cricketData.primaryRole,
         battingStyle: cricketData.battingStyle || 'RIGHT_HAND',
         bowlingStyle: cricketData.bowlingStyle || 'DOESNT_BOWL',

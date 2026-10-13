@@ -324,6 +324,7 @@ describe('Fix #1/#1A — jersey_size Schema Mismatch Regression', () => {
           profileImageUrl: 'data:image/png;base64,iVBOR',
           cricketRole: 'ALL_ROUNDER',
           battingStyle: 'LEFT_HAND',
+          bowlingStyle: 'RIGHT_ARM_FAST',
           jerseySize: 'L',
           mobile: '9123456789',
         }),

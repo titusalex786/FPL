@@ -44,7 +44,8 @@ export const BATTING_STYLE_OPTIONS = [
 ];
 
 export const BOWLING_STYLE_OPTIONS = [
-  { value: '', label: "Doesn't Bowl" },
+  { value: '', label: 'Select Bowling Style' },
+  { value: 'DOESNT_BOWL', label: "Doesn't Bowl" },
   { value: 'RIGHT_ARM_FAST', label: 'Right Arm Fast' },
   { value: 'RIGHT_ARM_MEDIUM', label: 'Right Arm Medium' },
   { value: 'RIGHT_ARM_SPIN', label: 'Right Arm Spin' },
@@ -61,6 +62,8 @@ export const JERSEY_SIZE_OPTIONS = [
   { value: 'XXL', label: 'XX-Large (XXL - 46")' },
   { value: '3XL', label: '3X-Large (3XL - 48")' },
 ];
+
+const ROLES_REQUIRING_BOWLING_STYLE = ['BOWLER', 'ALL_ROUNDER', 'BOWLER_WICKETKEEPER'];
 
 export const UnifiedParticipantForm: React.FC<UnifiedParticipantFormProps> = ({
   title,
@@ -86,9 +89,19 @@ export const UnifiedParticipantForm: React.FC<UnifiedParticipantFormProps> = ({
   });
 
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const requiresBowlingStyle = ROLES_REQUIRING_BOWLING_STYLE.includes(formData.cricketRole);
 
   const updateField = (field: keyof ParticipantFormData, value: string) => {
     const updated = { ...formData, [field]: value };
+    if (field === 'cricketRole') {
+      if (ROLES_REQUIRING_BOWLING_STYLE.includes(value)) {
+        if (!updated.bowlingStyle || updated.bowlingStyle === 'DOESNT_BOWL') {
+          updated.bowlingStyle = '';
+        }
+      } else {
+        updated.bowlingStyle = 'DOESNT_BOWL';
+      }
+    }
     // Auto-sync jersey name if not custom edited
     if (field === 'fullName' && (!formData.jerseyName || formData.jerseyName === formData.fullName)) {
       updated.jerseyName = value;
@@ -253,8 +266,11 @@ export const UnifiedParticipantForm: React.FC<UnifiedParticipantFormProps> = ({
         </div>
 
         <div>
-          <label className="text-[11px] font-medium text-slate-300 block mb-1">Bowling Style</label>
+          <label className="text-[11px] font-medium text-slate-300 block mb-1">
+            Bowling Style{requiresBowlingStyle ? ' *' : ''}
+          </label>
           <select
+            required={requiresBowlingStyle}
             value={formData.bowlingStyle}
             onChange={(e) => updateField('bowlingStyle', e.target.value)}
             className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"

@@ -564,6 +564,7 @@ describe('Normal Player Jersey Name and Number End-to-End Verification', () => {
         profileImageUrl: 'https://example.com/amit.jpg',
         cricketRole: 'BOWLER',
         battingStyle: 'RIGHT_HAND',
+        bowlingStyle: 'RIGHT_ARM_FAST',
         jerseySize: 'XL',
         jerseyName: 'AMIT-K',
         jerseyNumber: '19',

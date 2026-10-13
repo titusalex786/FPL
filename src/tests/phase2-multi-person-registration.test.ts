@@ -164,6 +164,7 @@ describe('Phase 2 — Multi-Person Registration Safety & Account Isolation', () 
       profileImageUrl: 'data:image/png;base64,ABC',
       cricketRole: 'ALL_ROUNDER',
       battingStyle: 'LEFT_HAND',
+      bowlingStyle: 'RIGHT_ARM_FAST',
       jerseySize: 'M',
       jerseyName: 'FRIEND',
       jerseyNumber: '7',

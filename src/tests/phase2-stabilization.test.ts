@@ -194,6 +194,8 @@ describe('Phase 2 Stabilization Tests', () => {
       fullName: 'Amit Kumar',
       profileImageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
       cricketRole: 'BOWLER',
+      battingStyle: 'RIGHT_HAND',
+      bowlingStyle: 'RIGHT_ARM_FAST',
       mobile: '9876543211',
     }));
 

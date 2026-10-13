@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { uploadToStorageBucket, validateImageFileBuffer } from '@/lib/storage/upload';
+import { playerCricketDetailsSchema } from '@/lib/validation/registration';
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,8 +26,30 @@ export async function POST(req: NextRequest) {
     }
 
     const rawRole = body.cricketRole || body.primaryRole || 'BATSMAN';
-    const cricketRole = rawRole === 'WICKETKEEPER' || rawRole === 'BATSMAN_BOWLER' ? 'ALL_ROUNDER' : rawRole;
-    const battingStyle = body.battingStyle || 'RIGHT_HAND';
+    const cricketRoleValue = rawRole === 'WICKETKEEPER'
+      ? 'BATSMAN_WICKETKEEPER'
+      : rawRole === 'BATSMAN_BOWLER'
+        ? 'ALL_ROUNDER'
+        : rawRole;
+    const cricketDetails = playerCricketDetailsSchema.safeParse({
+      cricketRole: cricketRoleValue,
+      battingStyle: body.battingStyle || 'RIGHT_HAND',
+      bowlingStyle: body.bowlingStyle || null,
+    });
+    if (!cricketDetails.success) {
+      return NextResponse.json(
+        {
+          error: 'Invalid cricket role or style',
+          details: cricketDetails.error.issues.map((issue) => ({
+            field: issue.path.join('.'),
+            message: issue.message,
+          })),
+        },
+        { status: 400 }
+      );
+    }
+
+    const { cricketRole, battingStyle, bowlingStyle } = cricketDetails.data;
     const jerseySize = body.jerseySize || 'M';
     const jerseyName = (body.jerseyName || fullName).trim();
     const jerseyNumber = (body.jerseyNumber || '').trim();
@@ -48,7 +71,7 @@ export async function POST(req: NextRequest) {
           player_type: 'STANDARD',
           cricket_role: cricketRole,
           batting_style: battingStyle,
-          bowling_style: body.bowlingStyle || null,
+          bowling_style: bowlingStyle || null,
           jersey_name: jerseyName,
           jersey_number: jerseyNumber || null,
           profile_image_url: profileImageUrl,
@@ -94,7 +117,7 @@ export async function POST(req: NextRequest) {
             mobile: body.mobile || null,
             cricket_role: cricketRole,
             batting_style: battingStyle,
-            bowling_style: body.bowlingStyle || null,
+            bowling_style: bowlingStyle || null,
             jersey_name: jerseyName,
             jersey_number: jerseyNumber || null,
             profile_image_url: profileImageUrl,
@@ -204,7 +227,7 @@ export async function POST(req: NextRequest) {
       p_created_by_auth_id: user.id,
       p_registered_jersey_name_snapshot: jerseyName,
       p_registered_jersey_number_snapshot: jerseyNumber || null,
-      p_registered_bowling_style_snapshot: body.bowlingStyle || null,
+      p_registered_bowling_style_snapshot: bowlingStyle || null,
     });
 
     if (rpcErr || !rpcData || rpcData.length === 0) {
@@ -232,7 +255,7 @@ export async function POST(req: NextRequest) {
           .update({
             registered_jersey_name_snapshot: jerseyName,
             registered_jersey_number_snapshot: jerseyNumber || null,
-            registered_bowling_style_snapshot: body.bowlingStyle || null,
+            registered_bowling_style_snapshot: bowlingStyle || null,
           })
           .eq('id', registrationId);
 

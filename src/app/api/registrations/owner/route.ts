@@ -2,11 +2,28 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { uploadToStorageBucket, validateImageFileBuffer } from '@/lib/storage/upload';
+import { playerCricketDetailsSchema } from '@/lib/validation/registration';
 
 export async function POST(req: NextRequest) {
   try {
     const supabaseServer = await createServerSupabaseClient();
-    const { data: { user }, error: authError } = await supabaseServer.auth.getUser();
+    let { data: { user }, error: authError } = await supabaseServer.auth.getUser();
+
+    // Fallback: If cookie session is missing, verify Authorization: Bearer token server-side
+    if (!user) {
+      const authHeader = req.headers.get('authorization');
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7).trim();
+        if (token) {
+          const supabaseAdmin = createAdminClient();
+          const { data: tokenData, error: tokenError } = await supabaseAdmin.auth.getUser(token);
+          if (!tokenError && tokenData?.user) {
+            user = tokenData.user;
+            authError = null;
+          }
+        }
+      }
+    }
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
@@ -50,6 +67,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const ownerCricketDetails = playerCricketDetailsSchema.safeParse({
+      cricketRole: ownerRole || 'BATSMAN',
+      battingStyle: ownerBattingStyle || 'RIGHT_HAND',
+      bowlingStyle: ownerBowlingStyle || null,
+    });
+    if (!ownerCricketDetails.success) {
+      return NextResponse.json(
+        { error: 'Invalid Owner cricket role or style', details: ownerCricketDetails.error.issues },
+        { status: 400 }
+      );
+    }
+
+    const iconCricketDetails = playerCricketDetailsSchema.safeParse({
+      cricketRole: iconPlayerRole || 'BATSMAN',
+      battingStyle: iconPlayerBattingStyle || 'RIGHT_HAND',
+      bowlingStyle: iconPlayerBowlingStyle || null,
+    });
+    if (!iconCricketDetails.success) {
+      return NextResponse.json(
+        { error: 'Invalid Icon Player cricket role or style', details: iconCricketDetails.error.issues },
+        { status: 400 }
+      );
+    }
+
     const effectiveIconImageSnapshot = iconProfileImageUrl?.trim() || iconPlayerPhotoUrl?.trim() || null;
     if (!effectiveIconImageSnapshot) {
       return NextResponse.json(
@@ -76,8 +117,9 @@ export async function POST(req: NextRequest) {
           full_name: ownerName.trim(),
           email: contactEmail.toLowerCase().trim(),
           mobile: contactPhone || null,
-          cricket_role: ownerRole || 'BATSMAN',
-          batting_style: ownerBattingStyle || 'RIGHT_HAND',
+          cricket_role: ownerCricketDetails.data.cricketRole,
+          batting_style: ownerCricketDetails.data.battingStyle,
+          bowling_style: ownerCricketDetails.data.bowlingStyle || null,
           profile_image_url: ownerProfileImageUrl || null,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'auth_user_id' })
@@ -148,9 +190,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Normalise Owner Player #1 snapshot fields
-    const effectiveOwnerRole = ownerRole?.trim() || 'BATSMAN';
-    const effectiveOwnerBattingStyle = ownerBattingStyle?.trim() || 'RIGHT_HAND';
-    const effectiveOwnerBowlingStyle = ownerBowlingStyle?.trim() || null;
+    const effectiveOwnerRole = ownerCricketDetails.data.cricketRole;
+    const effectiveOwnerBattingStyle = ownerCricketDetails.data.battingStyle;
+    const effectiveOwnerBowlingStyle = ownerCricketDetails.data.bowlingStyle || null;
     const effectiveOwnerJerseySize = ownerJerseySize?.trim() || 'M';
     const effectiveOwnerImageSnapshot = ownerProfileImageUrl?.trim() || null;
     // Jersey snapshot extraction
@@ -180,9 +222,9 @@ export async function POST(req: NextRequest) {
         p_screenshot_object_path: null,
         p_icon_name: iconPlayerName?.trim() || ownerName.trim(),
         p_icon_mobile: iconPlayerMobile || contactPhone || null,
-        p_icon_role: iconPlayerRole || 'BATSMAN',
-        p_icon_batting_style: iconPlayerBattingStyle || 'RIGHT_HAND',
-        p_icon_bowling_style: iconPlayerBowlingStyle || null,
+        p_icon_role: iconCricketDetails.data.cricketRole,
+        p_icon_batting_style: iconCricketDetails.data.battingStyle,
+        p_icon_bowling_style: iconCricketDetails.data.bowlingStyle || null,
         p_created_by_auth_id: user.id,
         p_payment_method: paymentMethod || 'UPI_QR',
         p_icon_image_snapshot: effectiveIconImageSnapshot,

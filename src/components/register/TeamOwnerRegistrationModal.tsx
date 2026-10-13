@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -8,6 +9,7 @@ import { formatPaiseToINR } from '@/lib/utils/format';
 import { compressImageFile } from '@/lib/utils/image';
 import { UnifiedParticipantForm, ParticipantFormData } from './UnifiedParticipantForm';
 import { UPIPaymentChoice } from '@/components/ui/UPIPaymentChoice';
+import { createClient } from '@/lib/supabase/client';
 import {
   Crown,
   CheckCircle2,
@@ -17,6 +19,7 @@ import {
   Shield,
   Star,
   QrCode,
+  Lock,
 } from 'lucide-react';
 
 interface TeamOwnerRegistrationModalProps {
@@ -32,6 +35,53 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
   tournament,
   currentUser,
 }) => {
+  const [authChecking, setAuthChecking] = useState<boolean>(!currentUser);
+  const [authUser, setAuthUser] = useState<any>(currentUser || null);
+
+  // Synchronize auth state with Supabase client
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let isMounted = true;
+    const supabase = createClient();
+
+    if (currentUser) {
+      setAuthUser(currentUser);
+      setAuthChecking(false);
+    } else {
+      setAuthChecking(true);
+      supabase.auth.getUser().then(({ data, error }) => {
+        if (!isMounted) return;
+        if (!error && data?.user) {
+          setAuthUser(data.user);
+        } else {
+          setAuthUser(null);
+        }
+        setAuthChecking(false);
+      }).catch(() => {
+        if (isMounted) {
+          setAuthUser(null);
+          setAuthChecking(false);
+        }
+      });
+    }
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+      if (session?.user) {
+        setAuthUser(session.user);
+      } else {
+        setAuthUser(null);
+      }
+      setAuthChecking(false);
+    });
+
+    return () => {
+      isMounted = false;
+      authListener?.subscription?.unsubscribe();
+    };
+  }, [isOpen, currentUser]);
+
   // Owner Participant Data
   const [ownerData, setOwnerData] = useState<ParticipantFormData>({
     fullName: currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0] || '',
@@ -46,6 +96,17 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
     photoUrl: '',
   });
 
+  // Sync owner defaults when auth user is resolved
+  useEffect(() => {
+    if (authUser) {
+      setOwnerData((prev) => ({
+        ...prev,
+        fullName: prev.fullName || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || '',
+        email: authUser.email || prev.email,
+      }));
+    }
+  }, [authUser]);
+
   // Team Data
   const [teamName, setTeamName] = useState('');
   const [teamLogoUrl, setTeamLogoUrl] = useState('');
@@ -54,7 +115,7 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
   // Icon Participant Data
   const [iconData, setIconData] = useState<ParticipantFormData>({
     fullName: '',
-    email: currentUser?.email || '',
+    email: currentUser?.email || authUser?.email || '',
     mobile: '',
     cricketRole: 'BATSMAN',
     battingStyle: 'RIGHT_HAND',
@@ -160,9 +221,21 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
     setSuccessMsg(null);
 
     try {
+      const supabase = createClient();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+      }
+
       const res = await fetch('/api/registrations/owner', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
+        credentials: 'include',
         body: JSON.stringify({
           tournamentId: tournament.id,
           // Owner identity
@@ -236,7 +309,28 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
       title="👑 Team Owner Registration"
       maxWidth="md"
     >
-      <form onSubmit={handleSubmit} className="space-y-5 text-xs sm:text-sm">
+      {authChecking ? (
+        <div className="flex flex-col items-center justify-center p-8 space-y-3 text-center">
+          <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm font-semibold text-amber-200">Checking your sign-in...</p>
+        </div>
+      ) : !authUser ? (
+        <div className="p-6 bg-slate-950/80 border border-slate-800 rounded-2xl text-center space-y-4">
+          <Lock className="w-10 h-10 text-amber-400 mx-auto" />
+          <h3 className="text-base font-bold text-white">Please sign in to register as a team owner.</h3>
+          <p className="text-xs text-slate-400 max-w-md mx-auto">
+            Team owner registration requires a verified account so your franchise ownership, slot allocation, and icon player are securely bound to your identity.
+          </p>
+          <div className="pt-2">
+            <Link href={`/auth/login?redirect=/tournament/${tournament?.id}?type=owner`}>
+              <Button size="md" className="bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold px-6">
+                Sign In to Register
+              </Button>
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-5 text-xs sm:text-sm">
         {/* CLUBBED FEE SUMMARY BANNER */}
         <div className="p-4 bg-gradient-to-r from-amber-950/80 via-slate-900 to-amber-950/80 border border-amber-500/50 rounded-2xl space-y-2 shadow-xl">
           <div className="flex items-center justify-between">
@@ -431,7 +525,8 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
             {submitting ? 'Registering Squad...' : `Register Owner + Icon (${totalClubbedFeeDisplay})`}
           </Button>
         </div>
-      </form>
+        </form>
+      )}
     </Modal>
   );
 };

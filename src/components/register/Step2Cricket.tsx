@@ -23,8 +23,10 @@ export const Step2Cricket: React.FC<Step2Props> = ({ initialData, onNext, onBack
     setFormData((prev) => {
       const updated: Step2CricketInput = { ...prev, primaryRole: role };
       // Conditional logic: if Doesn't Bowl or Batsman/Wicketkeeper only, set bowlingStyle accordingly
-      if (role === 'BATSMAN' || role === 'WICKETKEEPER') {
+      if (role === 'BATSMAN' || role === 'BATSMAN_WICKETKEEPER') {
         updated.bowlingStyle = 'DOESNT_BOWL';
+      } else if (prev.bowlingStyle === 'DOESNT_BOWL') {
+        updated.bowlingStyle = '';
       }
       return updated;
     });
@@ -49,8 +51,8 @@ export const Step2Cricket: React.FC<Step2Props> = ({ initialData, onNext, onBack
 
     if (
       (formData.primaryRole === 'BOWLER' ||
-        formData.primaryRole === 'BATSMAN_BOWLER' ||
-        formData.primaryRole === 'ALL_ROUNDER') &&
+        formData.primaryRole === 'ALL_ROUNDER' ||
+        formData.primaryRole === 'BOWLER_WICKETKEEPER') &&
       (!formData.bowlingStyle || formData.bowlingStyle === 'DOESNT_BOWL')
     ) {
       newErrors.bowlingStyle = 'Please select your bowling style for this role';
@@ -74,8 +76,7 @@ export const Step2Cricket: React.FC<Step2Props> = ({ initialData, onNext, onBack
 
   const isBowlingDisabled =
     formData.primaryRole === 'BATSMAN' ||
-    formData.primaryRole === 'WICKETKEEPER' ||
-    formData.bowlingStyle === 'DOESNT_BOWL';
+    formData.primaryRole === 'BATSMAN_WICKETKEEPER';
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 animate-fadeIn">
@@ -102,9 +103,9 @@ export const Step2Cricket: React.FC<Step2Props> = ({ initialData, onNext, onBack
               options={[
                 { value: 'BATSMAN', label: 'Batsman' },
                 { value: 'BOWLER', label: 'Bowler' },
-                { value: 'WICKETKEEPER', label: 'Wicketkeeper' },
-                { value: 'BATSMAN_BOWLER', label: 'Batsman + Bowler' },
                 { value: 'ALL_ROUNDER', label: 'All-rounder' },
+                { value: 'BATSMAN_WICKETKEEPER', label: 'Batsman + Wicketkeeper' },
+                { value: 'BOWLER_WICKETKEEPER', label: 'Bowler + Wicketkeeper' },
               ]}
             />
           </div>
@@ -128,9 +129,14 @@ export const Step2Cricket: React.FC<Step2Props> = ({ initialData, onNext, onBack
           {/* Bowling Style (Conditional UI) */}
           <div>
             <Select
-              label="Bowling Style"
-              disabled={formData.primaryRole === 'BATSMAN' || formData.primaryRole === 'WICKETKEEPER'}
-              value={formData.bowlingStyle || 'DOESNT_BOWL'}
+              label={`Bowling Style${['BOWLER', 'ALL_ROUNDER', 'BOWLER_WICKETKEEPER'].includes(formData.primaryRole) ? ' *' : ''}`}
+              disabled={formData.primaryRole === 'BATSMAN' || formData.primaryRole === 'BATSMAN_WICKETKEEPER'}
+              required={
+                formData.primaryRole === 'BOWLER' ||
+                formData.primaryRole === 'ALL_ROUNDER' ||
+                formData.primaryRole === 'BOWLER_WICKETKEEPER'
+              }
+              value={formData.bowlingStyle}
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, bowlingStyle: e.target.value as BowlingStyle }))
               }
@@ -141,6 +147,7 @@ export const Step2Cricket: React.FC<Step2Props> = ({ initialData, onNext, onBack
                   : 'Select arm and spin/fast style'
               }
               options={[
+                { value: '', label: 'Select Bowling Style' },
                 { value: 'RIGHT_ARM_FAST', label: 'Right-arm Fast' },
                 { value: 'RIGHT_ARM_MEDIUM', label: 'Right-arm Medium' },
                 { value: 'RIGHT_ARM_SPIN', label: 'Right-arm Spin' },

@@ -58,7 +58,8 @@ export type DashboardIcon = {
 export function resolveDashboardOwner(
   authenticatedPlayerId: string | null,
   tournamentId: string,
-  owners: DashboardTeamOwner[]
+  owners: DashboardTeamOwner[],
+  requestedTeamOwnerId?: string | null
 ): DashboardTeamOwner | null {
   if (!authenticatedPlayerId) return null;
 
@@ -67,6 +68,10 @@ export function resolveDashboardOwner(
       owner.tournament_id === tournamentId &&
       owner.player_id === authenticatedPlayerId
   );
+
+  if (requestedTeamOwnerId) {
+    return matches.find((owner) => owner.id === requestedTeamOwnerId) || null;
+  }
 
   return matches.length === 1 ? matches[0] : null;
 }

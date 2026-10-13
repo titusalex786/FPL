@@ -75,10 +75,12 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
       .eq('player_id', player.id);
 
     if (ownerError) throw ownerError;
+    const requestedTeamOwnerId = _request.nextUrl.searchParams.get('teamOwnerId');
     const teamOwner = resolveDashboardOwner(
       player.id,
       auctionRow.tournament_id,
-      (ownerRows || []) as DashboardTeamOwner[]
+      (ownerRows || []) as DashboardTeamOwner[],
+      requestedTeamOwnerId
     );
 
     if (!teamOwner) {

@@ -228,6 +228,33 @@ describe('A6 team auction dashboard', () => {
     ).toBeNull();
   });
 
+  it('resolves the requested team owner when multiple teams are owned by the same player', () => {
+    const secondOwner = { ...owner, id: 'owner-a-second', team_name: 'Team B' };
+    const resolved = resolveDashboardOwner(
+      'player-owner-a',
+      'tournament-a',
+      [owner, secondOwner],
+      'owner-a-second'
+    );
+    expect(resolved).toEqual(secondOwner);
+  });
+
+  it('rejects requested team owner ID if it does not belong to the authenticated player', () => {
+    const otherOwner = {
+      ...owner,
+      id: 'owner-other-player',
+      player_id: 'different-player',
+      team_name: 'Other Team',
+    };
+    const resolved = resolveDashboardOwner(
+      'player-owner-a',
+      'tournament-a',
+      [owner, otherOwner],
+      'owner-other-player'
+    );
+    expect(resolved).toBeNull();
+  });
+
   it('returns a clean empty purchase list', () => {
     expect(build({ purchases: [] }).purchases).toEqual([]);
   });

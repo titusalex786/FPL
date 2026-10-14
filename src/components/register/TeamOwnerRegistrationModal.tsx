@@ -142,12 +142,23 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
   const playerFeeDisplay = formatPaiseToINR(playerFeePaise);
   const totalClubbedFeeDisplay = formatPaiseToINR(totalClubbedFeePaise);
 
-  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
       setErrorMsg('Team logo image must be 5 MB or smaller');
       return;
+    }
+    try {
+      const compressed = await compressImageFile(file, 600, 600, 0.8);
+      if (compressed) {
+        setTeamLogoBase64(compressed);
+        setTeamLogoUrl(compressed);
+        setErrorMsg(null);
+        return;
+      }
+    } catch {
+      // Fallback to FileReader
     }
     const reader = new FileReader();
     reader.onload = () => {

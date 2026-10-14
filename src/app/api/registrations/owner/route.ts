@@ -239,13 +239,32 @@ export async function POST(req: NextRequest) {
     if (rpcResV4.error || !rpcResV4.data || rpcResV4.data.length === 0) {
       console.error('RPC Error allocate_owner_registration_v4:', rpcResV4.error);
       const rawError = rpcResV4.error?.message || 'Failed to allocate owner slot atomically';
-      let safeError = rawError;
-      if (rawError.includes('already exists') || rawError.includes('already registered')) {
-        safeError = 'You or a team with this name is already registered for this tournament.';
+      let safeError = 'We could not complete the owner registration. Please try again or contact the organiser.';
+
+      if (
+        rawError.includes('This team name is already registered') ||
+        rawError.includes('uq_team_owners_tournament_team_name') ||
+        rawError.includes('team name')
+      ) {
+        safeError = 'This team name is already registered for this tournament. Please choose another team name.';
+      } else if (
+        rawError.includes('already registered as a team owner') ||
+        rawError.includes('uq_registrations_owner_team_owner')
+      ) {
+        safeError = 'You are already registered as a team owner for this tournament.';
+      } else if (
+        rawError.includes('icon player registration already exists') ||
+        rawError.includes('uq_registrations_icon_team_owner')
+      ) {
+        safeError = 'An icon player registration already exists for this team.';
       } else if (rawError.includes('All owner slots')) {
         safeError = 'Registration could not be completed because all team owner slots for this tournament are filled.';
       } else if (rawError.includes('Insufficient player slots')) {
         safeError = 'Registration could not be completed because there are not enough player slots remaining for Owner + Icon.';
+      } else if (rawError.includes('Owner-based tournament not found')) {
+        safeError = 'Owner-based tournament not found.';
+      } else if (rawError.includes('Registration slot collision')) {
+        safeError = 'Registration slot collision. Please try again.';
       }
       return NextResponse.json(
         { error: safeError },
@@ -331,6 +350,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error('Owner Registration Endpoint Error:', err);
-    return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'We could not complete the owner registration. Please try again or contact the organiser.' },
+      { status: 500 }
+    );
   }
 }

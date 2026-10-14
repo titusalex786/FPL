@@ -158,7 +158,6 @@ function RegisterContent() {
         registrationFor: personalData.registrationFor || 'SELF',
         fullName: personalData.fullName,
         email: personalData.email || (personalData.mobile ? `${personalData.mobile}@fairplay.local` : ''),
-        profileImageUrl: personalData.profilePhotoPath,
         profilePhotoPath: personalData.profilePhotoPath,
         cricketRole: cricketData.primaryRole,
         primaryRole: cricketData.primaryRole,
@@ -179,10 +178,32 @@ function RegisterContent() {
         body: JSON.stringify(payload),
       });
 
-      const regResult = await regResponse.json();
+      let regResult: any = null;
+      const contentType = regResponse.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          regResult = await regResponse.json();
+        } catch {
+          regResult = null;
+        }
+      }
 
-      if (!regResponse.ok || regResult.error) {
-        setSubmitError(regResult.error || 'Failed to process registration');
+      if (!regResponse.ok || regResult?.error) {
+        let msg = regResult?.error;
+        if (!msg) {
+          if (regResponse.status === 401) {
+            msg = 'Please sign in again to continue.';
+          } else if (regResponse.status === 413) {
+            msg = 'One or more uploaded images are too large. Please use smaller images and try again.';
+          } else if (regResponse.status === 429) {
+            msg = 'Too many requests. Please wait a moment and try again.';
+          } else if (regResponse.status >= 500) {
+            msg = "We couldn't complete your registration. Please try again or contact the organiser.";
+          } else {
+            msg = 'We could not complete your registration. Please try again.';
+          }
+        }
+        setSubmitError(msg);
         setIsLoading(false);
         return;
       }
@@ -192,7 +213,11 @@ function RegisterContent() {
       // Redirect to official registration pass & UPI payment details page
       router.push(`/registration/${registrationId}`);
     } catch (err: any) {
-      setSubmitError(err.message || 'An unexpected network error occurred');
+      let friendlyMsg = 'An unexpected network error occurred. Please try again.';
+      if (err?.message && !err.message.includes('Unexpected token') && !err.message.includes('JSON')) {
+        friendlyMsg = err.message;
+      }
+      setSubmitError(friendlyMsg);
       setIsLoading(false);
     }
   };

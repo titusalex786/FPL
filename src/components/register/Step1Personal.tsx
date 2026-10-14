@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Step1PersonalInput } from '@/lib/validation/registration';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { compressImageFile } from '@/lib/utils/image';
 import { User, Phone, Mail, Calendar, MapPin, Upload, ArrowRight, Image as ImageIcon } from 'lucide-react';
 
 export interface Step1Props {
@@ -48,7 +49,7 @@ export const Step1Personal: React.FC<Step1Props> = ({ initialData, onNext }) => 
     }
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -57,9 +58,27 @@ export const Step1Personal: React.FC<Step1Props> = ({ initialData, onNext }) => 
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      setErrors((prev) => ({ ...prev, profilePhotoPath: 'File size must be under 2 MB' }));
+    if (file.size > 5 * 1024 * 1024) {
+      setErrors((prev) => ({ ...prev, profilePhotoPath: 'File size must be under 5 MB' }));
       return;
+    }
+
+    try {
+      const compressed = await compressImageFile(file, 1000, 1000, 0.8);
+      if (compressed) {
+        setPreviewPhoto(compressed);
+        setFormData((prev) => ({ ...prev, profilePhotoPath: compressed }));
+        if (errors.profilePhotoPath) {
+          setErrors((prev) => {
+            const updated = { ...prev };
+            delete updated.profilePhotoPath;
+            return updated;
+          });
+        }
+        return;
+      }
+    } catch {
+      // Fallback to FileReader
     }
 
     const reader = new FileReader();

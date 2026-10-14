@@ -17,7 +17,7 @@ export async function GET() {
     }
 
     const supabaseAdmin = createAdminClient();
-    const { data: player, error } = await supabaseAdmin
+    let { data: player, error } = await supabaseAdmin
       .from('players')
       .select('*')
       .eq('auth_user_id', user.id)
@@ -25,6 +25,35 @@ export async function GET() {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Auto-claim unlinked tournament-only profile matching user.email if none linked yet
+    if (!player && user.email) {
+      const { data: unlinked } = await supabaseAdmin
+        .from('players')
+        .select('*')
+        .ilike('email', user.email.toLowerCase().trim())
+        .is('auth_user_id', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (unlinked?.id) {
+        const { data: linked } = await supabaseAdmin
+          .from('players')
+          .update({
+            auth_user_id: user.id,
+            is_tournament_only: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', unlinked.id)
+          .select('*')
+          .maybeSingle();
+
+        if (linked) {
+          player = linked;
+        }
+      }
     }
 
     // Fetch all tournament registrations created by or linked to this authenticated user
@@ -145,6 +174,28 @@ export async function POST(req: NextRequest) {
         effectiveProfileImageUrl = uploadResult.publicUrl || objectPath;
       } catch (uploadErr: any) {
         return NextResponse.json({ error: uploadErr.message || 'Failed to upload profile image' }, { status: 400 });
+      }
+    }
+
+    // If user has an unlinked tournament-only profile matching their email, link it first
+    if (user.email) {
+      const { data: unlinked } = await supabaseAdmin
+        .from('players')
+        .select('id')
+        .ilike('email', user.email.toLowerCase().trim())
+        .is('auth_user_id', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (unlinked?.id) {
+        await supabaseAdmin
+          .from('players')
+          .update({
+            auth_user_id: user.id,
+            is_tournament_only: false,
+          })
+          .eq('id', unlinked.id);
       }
     }
 

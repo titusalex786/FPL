@@ -27,6 +27,8 @@ interface TeamOwnerRegistrationModalProps {
   onClose: () => void;
   tournament: any;
   currentUser?: any;
+  isAdmin?: boolean;
+  onSuccess?: () => void;
 }
 
 export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProps> = ({
@@ -34,8 +36,10 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
   onClose,
   tournament,
   currentUser,
+  isAdmin = false,
+  onSuccess,
 }) => {
-  const [authChecking, setAuthChecking] = useState<boolean>(!currentUser);
+  const [authChecking, setAuthChecking] = useState<boolean>(!isAdmin && !currentUser);
   const [authUser, setAuthUser] = useState<any>(currentUser || null);
 
   // Synchronize auth state with Supabase client
@@ -49,7 +53,7 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
       setAuthUser(currentUser);
       setAuthChecking(false);
     } else {
-      setAuthChecking(true);
+      setAuthChecking(!isAdmin);
       supabase.auth.getUser().then(({ data, error }) => {
         if (!isMounted) return;
         if (!error && data?.user) {
@@ -80,12 +84,12 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
       isMounted = false;
       authListener?.subscription?.unsubscribe();
     };
-  }, [isOpen, currentUser]);
+  }, [isOpen, currentUser, isAdmin]);
 
   // Owner Participant Data
   const [ownerData, setOwnerData] = useState<ParticipantFormData>({
-    fullName: currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0] || '',
-    email: currentUser?.email || '',
+    fullName: !isAdmin ? (currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0] || '') : '',
+    email: !isAdmin ? (currentUser?.email || '') : '',
     mobile: '',
     cricketRole: 'BATSMAN',
     battingStyle: 'RIGHT_HAND',
@@ -96,16 +100,16 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
     photoUrl: '',
   });
 
-  // Sync owner defaults when auth user is resolved
+  // Sync owner defaults when auth user is resolved (non-admin mode only)
   useEffect(() => {
-    if (authUser) {
+    if (!isAdmin && authUser) {
       setOwnerData((prev) => ({
         ...prev,
         fullName: prev.fullName || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || '',
         email: authUser.email || prev.email,
       }));
     }
-  }, [authUser]);
+  }, [authUser, isAdmin]);
 
   // Team Data
   const [teamName, setTeamName] = useState('');
@@ -115,7 +119,7 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
   // Icon Participant Data
   const [iconData, setIconData] = useState<ParticipantFormData>({
     fullName: '',
-    email: currentUser?.email || authUser?.email || '',
+    email: !isAdmin ? (currentUser?.email || authUser?.email || '') : '',
     mobile: '',
     cricketRole: 'BATSMAN',
     battingStyle: 'RIGHT_HAND',
@@ -127,7 +131,10 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
   });
 
   // Payment Data
-  const [paymentMethod, setPaymentMethod] = useState<'UPI_QR' | 'ACKNOWLEDGE_BY_ORGANISER'>('UPI_QR');
+  const [paymentMethod, setPaymentMethod] = useState<'UPI_QR' | 'ACKNOWLEDGE_BY_ORGANISER' | 'DIRECT_ADMIN_ENTRY'>(
+    isAdmin ? 'DIRECT_ADMIN_ENTRY' : 'UPI_QR'
+  );
+  const [autoApprove, setAutoApprove] = useState<boolean>(true);
   const [screenshotBase64, setScreenshotBase64] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
@@ -190,8 +197,17 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Helper for initials avatar fallback in admin mode
+    const generateInitialsAvatar = (name: string, bg: string, fg: string) => {
+      const initial = (name.trim()[0] || 'P').toUpperCase();
+      return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><rect width="100%" height="100%" fill="${encodeURIComponent(bg)}"/><text x="50%" y="55%" font-size="52" font-family="sans-serif" font-weight="bold" fill="${encodeURIComponent(fg)}" text-anchor="middle" dominant-baseline="middle">${initial}</text></svg>`;
+    };
+
+    const effectiveOwnerPhoto = ownerData.photoUrl || (isAdmin ? generateInitialsAvatar(ownerData.fullName || 'Owner', '#1e293b', '#f59e0b') : '');
+    const effectiveIconPhoto = iconData.photoUrl || (isAdmin ? generateInitialsAvatar(iconData.fullName || 'Icon', '#042f2e', '#14b8a6') : '');
+
     // Validation
-    if (!ownerData.photoUrl) {
+    if (!effectiveOwnerPhoto) {
       setErrorMsg('Please upload the owner profile photo');
       return;
     }
@@ -211,8 +227,8 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
       return;
     }
 
-    // MANDATORY ICON PHOTO AND DATA VALIDATION
-    if (!iconData.photoUrl) {
+    // Mandatory Icon data validation
+    if (!effectiveIconPhoto) {
       setErrorMsg('Icon player profile photo is required');
       return;
     }
@@ -249,6 +265,8 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
         credentials: 'include',
         body: JSON.stringify({
           tournamentId: tournament.id,
+          isAdminEntry: Boolean(isAdmin),
+          autoApprove: Boolean(isAdmin && autoApprove),
           // Owner identity
           ownerName: ownerData.fullName.trim(),
           contactEmail: ownerData.email.trim().toLowerCase(),
@@ -260,7 +278,7 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
           ownerJerseySize: ownerData.jerseySize,
           ownerJerseyName: (ownerData.jerseyName || ownerData.fullName).trim(),
           ownerJerseyNumber: (ownerData.jerseyNumber || '').trim(),
-          ownerProfileImageUrl: ownerData.photoUrl || null,
+          ownerProfileImageUrl: effectiveOwnerPhoto || null,
           // Team
           teamName: teamName.trim(),
           teamLogoBase64: teamLogoBase64 || null,
@@ -276,7 +294,7 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
           iconJerseySize: iconData.jerseySize || 'M',
           iconJerseyName: (iconData.jerseyName || iconData.fullName).trim(),
           iconJerseyNumber: (iconData.jerseyNumber || '').trim(),
-          iconProfileImageUrl: iconData.photoUrl,
+          iconProfileImageUrl: effectiveIconPhoto,
         }),
       });
 
@@ -297,12 +315,16 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
         return;
       }
 
-      setSuccessMsg(data?.message || 'Registered as Team Owner successfully!');
+      setSuccessMsg(data?.message || (isAdmin ? 'Team Owner & Icon registered successfully!' : 'Registered as Team Owner successfully!'));
       setSubmitting(false);
       setTimeout(() => {
         onClose();
-        window.location.reload();
-      }, 1800);
+        if (onSuccess) {
+          onSuccess();
+        } else {
+          window.location.reload();
+        }
+      }, 1200);
     } catch (err: any) {
       setErrorMsg(
         err?.message && !err.message.includes('Failed to fetch')
@@ -317,15 +339,15 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="👑 Team Owner Registration"
+      title={isAdmin ? "👑 Admin: Register Owner & Icon" : "👑 Team Owner Registration"}
       maxWidth="md"
     >
       {authChecking ? (
         <div className="flex flex-col items-center justify-center p-8 space-y-3 text-center">
           <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm font-semibold text-amber-200">Checking your sign-in...</p>
+          <p className="text-sm font-semibold text-amber-200">Checking authorization...</p>
         </div>
-      ) : !authUser ? (
+      ) : (!isAdmin && !authUser) ? (
         <div className="p-6 bg-slate-950/80 border border-slate-800 rounded-2xl text-center space-y-4">
           <Lock className="w-10 h-10 text-amber-400 mx-auto" />
           <h3 className="text-base font-bold text-white">Please sign in to register as a team owner.</h3>
@@ -345,7 +367,10 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
         {/* CLUBBED FEE SUMMARY BANNER */}
         <div className="p-4 bg-gradient-to-r from-amber-950/80 via-slate-900 to-amber-950/80 border border-amber-500/50 rounded-2xl space-y-2 shadow-xl">
           <div className="flex items-center justify-between">
-            <span className="font-extrabold text-amber-300 text-sm">{tournament?.name}</span>
+            <span className="font-extrabold text-amber-300 text-sm">
+              {tournament?.name}
+              {isAdmin && <span className="ml-2 text-xs bg-amber-500 text-slate-950 font-black px-2 py-0.5 rounded-full">ADMIN ON-BEHALF</span>}
+            </span>
             <Crown className="w-6 h-6 text-amber-400 shrink-0" />
           </div>
           <div className="pt-2 border-t border-amber-500/20 grid grid-cols-3 gap-2 text-center text-xs">
@@ -385,14 +410,14 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
         {/* SECTION 1: OWNER PARTICIPANT DETAILS */}
         <div className="p-4 bg-amber-950/20 border border-amber-500/40 rounded-2xl space-y-3">
           <UnifiedParticipantForm
-            title="Owner / Player #1 Details"
-            subtitle="Your details as team owner and first player of the squad."
+            title={isAdmin ? "Register Owner on behalf of participant" : "Owner / Player #1 Details"}
+            subtitle={isAdmin ? "Enter owner details. A dedicated player profile is linked or created for this owner." : "Your details as team owner and first player of the squad."}
             badge="Player Slot #1"
             badgeColor="text-amber-400 bg-amber-950 border-amber-500/40"
             initialData={ownerData}
             onChange={setOwnerData}
-            currentUserEmail={currentUser?.email}
-            photoRequired={true}
+            currentUserEmail={!isAdmin ? currentUser?.email : undefined}
+            photoRequired={!isAdmin}
           />
         </div>
 
@@ -431,14 +456,14 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
         {/* SECTION 3: ICON PARTICIPANT DETAILS */}
         <div className="p-4 bg-slate-900/80 border border-slate-700 rounded-2xl space-y-3">
           <UnifiedParticipantForm
-            title="Icon / Player #2 Details *"
-            subtitle="Your nominated Icon player. A new tournament-only profile is created automatically."
+            title={isAdmin ? "Register Icon on behalf of participant" : "Icon / Player #2 Details *"}
+            subtitle={isAdmin ? "Enter nominated icon details. A dedicated player profile and icon tournament registration will be created." : "Nominated Icon player for this franchise. A dedicated tournament profile is allocated."}
             badge="Player Slot #2"
             badgeColor="text-emerald-400 bg-emerald-950 border-emerald-500/40"
             initialData={iconData}
             onChange={setIconData}
-            currentUserEmail={currentUser?.email}
-            photoRequired={true}
+            currentUserEmail={undefined}
+            photoRequired={!isAdmin}
           />
         </div>
 
@@ -453,7 +478,22 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
 
           <div className="space-y-3">
             <label className="text-[11px] font-semibold text-slate-300 block">Select Payment Method *</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className={`grid grid-cols-1 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('DIRECT_ADMIN_ENTRY')}
+                  className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-colors ${
+                    paymentMethod === 'DIRECT_ADMIN_ENTRY'
+                      ? 'bg-amber-950/70 border-amber-500 text-amber-300 ring-1 ring-amber-500'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span className="font-bold text-xs">⚡ Direct Admin / Cash</span>
+                  <span className="text-[10px] text-slate-400">Offline direct or cash entry</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setPaymentMethod('UPI_QR')}
@@ -464,7 +504,7 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
                 }`}
               >
                 <span className="font-bold text-xs">📱 Pay via UPI QR Code</span>
-                <span className="text-[10px] text-slate-400">Scan QR code & upload payment receipt screenshot</span>
+                <span className="text-[10px] text-slate-400">Scan QR code & upload receipt</span>
               </button>
 
               <button
@@ -477,11 +517,34 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
                 }`}
               >
                 <span className="font-bold text-xs">🤝 Acknowledge by Organiser</span>
-                <span className="text-[10px] text-slate-400">Offline / Direct arrangement with Organiser</span>
+                <span className="text-[10px] text-slate-400">Offline arrangement</span>
               </button>
             </div>
 
-            {paymentMethod === 'ACKNOWLEDGE_BY_ORGANISER' ? (
+            {isAdmin && (
+              <label className="flex items-center gap-3 p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl cursor-pointer mt-2">
+                <input
+                  type="checkbox"
+                  checked={autoApprove}
+                  onChange={(e) => setAutoApprove(e.target.checked)}
+                  className="w-4 h-4 rounded text-emerald-500 bg-slate-900 border-slate-700 focus:ring-emerald-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-xs font-bold text-emerald-300 block">
+                    Auto-approve team & confirm owner & icon slots immediately
+                  </span>
+                  <span className="text-[10px] text-slate-400 block">
+                    Automatically approves team owner status and marks both owner and icon registrations as CONFIRMED.
+                  </span>
+                </div>
+              </label>
+            )}
+
+            {paymentMethod === 'DIRECT_ADMIN_ENTRY' ? (
+              <div className="p-3 bg-emerald-950/30 border border-emerald-500/30 rounded-xl text-emerald-300 text-xs">
+                ✅ Direct entry registered under Admin authority.
+              </div>
+            ) : paymentMethod === 'ACKNOWLEDGE_BY_ORGANISER' ? (
               <div className="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-amber-300 text-xs">
                 ℹ️ Organiser will verify payment offline. Your registration will enter <strong>PENDING</strong> review queue for Organiser acknowledgement.
               </div>
@@ -533,7 +596,7 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
             Cancel
           </Button>
           <Button type="submit" isLoading={submitting} disabled={submitting} variant="gold">
-            {submitting ? 'Registering Squad...' : `Register Owner + Icon (${totalClubbedFeeDisplay})`}
+            {submitting ? 'Registering Squad...' : (isAdmin ? '👑 Register Owner & Icon' : `Register Owner + Icon (${totalClubbedFeeDisplay})`)}
           </Button>
         </div>
         </form>

@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { DeleteTournamentModal } from '@/components/admin/DeleteTournamentModal';
+import { TeamOwnerRegistrationModal } from '@/components/register/TeamOwnerRegistrationModal';
 import { useRouter } from 'next/navigation';
 import { formatPaiseToINR, formatDate } from '@/lib/utils/format';
 import {
@@ -42,6 +43,7 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
   const [activeTab, setActiveTab] = useState<'overview' | 'registrations' | 'owners' | 'payments'>('overview');
   const [copiedLink, setCopiedLink] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isRegisterOwnerModalOpen, setIsRegisterOwnerModalOpen] = useState(false);
 
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
@@ -693,7 +695,7 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
       {/* TAB CONTENT 4: TEAM OWNERS (OWNER_BASED ONLY) */}
       {activeTab === 'owners' && tournament?.tournament_type === 'OWNER_BASED' && (
         <Card className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <Crown className="w-5 h-5 text-amber-400" />
@@ -704,13 +706,38 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
               </p>
             </div>
 
-            <Badge status={teamOwners.length >= (tournament.max_teams || 8) ? 'CANCELLED' : 'CONFIRMED'}>
-              {teamOwners.length >= (tournament.max_teams || 8) ? 'All Slots Filled' : `${(tournament.max_teams || 8) - teamOwners.length} Slots Open`}
-            </Badge>
+            <div className="flex items-center gap-2.5">
+              <Badge status={teamOwners.length >= (tournament.max_teams || 8) ? 'CANCELLED' : 'CONFIRMED'}>
+                {teamOwners.length >= (tournament.max_teams || 8) ? 'All Slots Filled' : `${(tournament.max_teams || 8) - teamOwners.length} Slots Open`}
+              </Badge>
+
+              <button
+                type="button"
+                onClick={() => setIsRegisterOwnerModalOpen(true)}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Crown className="w-4 h-4 fill-slate-950" />
+                <span>+ Register Owner & Icon</span>
+              </button>
+            </div>
           </div>
 
           {teamOwners.length === 0 ? (
-            <p className="text-xs text-slate-500 italic p-6 text-center">No team owners registered yet for this tournament.</p>
+            <div className="p-8 bg-slate-950/60 rounded-2xl border border-dashed border-slate-800 text-center space-y-3">
+              <Crown className="w-10 h-10 text-amber-400/50 mx-auto" />
+              <p className="text-sm font-semibold text-slate-300">No team owners registered yet for this tournament.</p>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                As an admin, you can register team owners and their icon players on their behalf.
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsRegisterOwnerModalOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                <Crown className="w-4 h-4" />
+                <span>+ Register Owner & Icon</span>
+              </button>
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {teamOwners.map((o) => (
@@ -887,6 +914,20 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
           router.push('/admin');
         }}
       />
+
+      {/* REGISTER TEAM OWNER & ICON MODAL (ADMIN ON-BEHALF) */}
+      {isRegisterOwnerModalOpen && (
+        <TeamOwnerRegistrationModal
+          isOpen={isRegisterOwnerModalOpen}
+          onClose={() => setIsRegisterOwnerModalOpen(false)}
+          tournament={tournament}
+          isAdmin={true}
+          onSuccess={() => {
+            setIsRegisterOwnerModalOpen(false);
+            fetchSummary();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Home,
   ArrowLeft,
+  Gavel,
 } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -67,6 +68,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const navItems = [
     { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
     { label: 'Player Directory', href: '/admin/players', icon: Users },
+    { label: 'Auctions', href: '/manager/auctions', icon: Gavel },
     { label: 'Audit Logs', href: '/admin/audit-logs', icon: FileText },
     { label: 'Settings', href: '/admin/settings', icon: Settings },
   ];

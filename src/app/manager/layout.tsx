@@ -15,6 +15,7 @@ import {
   X,
   Loader2,
   ShieldCheck,
+  Gavel,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -70,6 +71,7 @@ export default function ManagerLayout({ children }: { children: React.ReactNode 
 
   const navItems = [
     { label: 'Manager Dashboard', href: '/manager', icon: Briefcase },
+    { label: 'Auctions', href: '/manager/auctions', icon: Gavel },
   ];
 
   const handleLogout = async () => {
@@ -118,7 +120,7 @@ export default function ManagerLayout({ children }: { children: React.ReactNode 
           <nav className="space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname === item.href;
+              const isActive = pathname === item.href || (item.href !== '/manager' && pathname.startsWith(item.href));
               return (
                 <Link
                   key={item.href}

@@ -135,21 +135,72 @@ export async function GET() {
     if (auth.kind === 'unauthorized') return auth.response;
 
     const client = createAdminClient();
-    const [tournamentsResult, auctionsResult, ownersResult] = await Promise.all([
+    const [tournamentsResult, auctionsResult, ownersResult, budgetsResult] = await Promise.all([
       client
         .from('tournaments')
         .select('id, name, tournament_type')
         .eq('tournament_type', 'OWNER_BASED')
         .order('name', { ascending: true }),
-      client.from('auctions').select('id, tournament_id, auction_name, status'),
+      client
+        .from('auctions')
+        .select('id, tournament_id, auction_name, status, starting_kitty, required_players_to_buy, created_at, updated_at, tournaments(name)')
+        .order('created_at', { ascending: false }),
       client
         .from('team_owners')
         .select('id, tournament_id, player_id, owner_registration_id, icon_registration_id, status')
         .in('status', ['APPROVED', 'CONFIRMED']),
+      client
+        .from('auction_team_budgets')
+        .select('auction_id, players_bought, players_remaining'),
     ]);
     if (tournamentsResult.error) throw tournamentsResult.error;
     if (auctionsResult.error) throw auctionsResult.error;
     if (ownersResult.error) throw ownersResult.error;
+
+    const tournamentsById = new Map(
+      (tournamentsResult.data || []).map((tournament) => [tournament.id, tournament.name])
+    );
+    const budgetsByAuction = new Map<
+      string,
+      { teamsCount: number; playersPurchased: number; playersRemaining: number }
+    >();
+    for (const b of (budgetsResult.data || [])) {
+      const current = budgetsByAuction.get(b.auction_id) || {
+        teamsCount: 0,
+        playersPurchased: 0,
+        playersRemaining: 0,
+      };
+      current.teamsCount += 1;
+      current.playersPurchased += Number(b.players_bought || 0);
+      current.playersRemaining += Number(b.players_remaining || 0);
+      budgetsByAuction.set(b.auction_id, current);
+    }
+
+    const auctionList = (auctionsResult.data || []).map((auction: any) => {
+      const stats = budgetsByAuction.get(auction.id) || {
+        teamsCount: 0,
+        playersPurchased: 0,
+        playersRemaining: 0,
+      };
+      const tournamentName =
+        tournamentsById.get(auction.tournament_id) ||
+        (auction.tournaments as { name?: string } | null)?.name ||
+        'Tournament';
+      return {
+        id: auction.id,
+        auctionName: auction.auction_name,
+        tournamentId: auction.tournament_id,
+        tournamentName,
+        status: auction.status,
+        startingKitty: auction.starting_kitty ?? 180000,
+        requiredPlayersToBuy: auction.required_players_to_buy ?? 9,
+        teamsCount: stats.teamsCount,
+        playersPurchased: stats.playersPurchased,
+        playersRemaining: stats.playersRemaining,
+        createdAt: auction.created_at,
+        updatedAt: auction.updated_at,
+      };
+    });
 
     const tournamentIds = (tournamentsResult.data || []).map((tournament) => tournament.id);
     const ownerRows = (ownersResult.data || []).filter(
@@ -182,6 +233,7 @@ export async function GET() {
     );
 
     return NextResponse.json({
+      auctions: auctionList,
       tournaments: (tournamentsResult.data || []).map((tournament) => {
         const eligibleTeamCount = ownerRows.filter((owner) => {
           if (owner.tournament_id !== tournament.id) return false;

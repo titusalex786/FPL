@@ -253,6 +253,8 @@ export default function ProjectorLivePage({
     : null;
   const secondsRemaining = isAuctionPaused && (liveLot as any)?.pausedRemainingSeconds != null
     ? (liveLot as any).pausedRemainingSeconds
+    : liveLot?.currentBid
+    ? null
     : bidDeadline
     ? Math.max(0, Math.ceil((bidDeadline - now) / 1000))
     : null;
@@ -497,6 +499,18 @@ export default function ProjectorLivePage({
                   ⏸ Paused
                 </span>
               )}
+            </div>
+          )}
+
+          {/* Floor Open badge when timer disabled after 1st bid */}
+          {isLive && secondsRemaining === null && liveLot?.currentBid && (
+            <div className="flex flex-col items-center justify-center rounded-3xl border border-emerald-500/40 bg-emerald-950/40 p-6 shadow-2xl">
+              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/20 px-4 py-1.5 text-xs font-black uppercase tracking-widest text-emerald-300">
+                ⚡ Bidding Live
+              </span>
+              <p className="mt-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+                Floor Open · Timer Disabled
+              </p>
             </div>
           )}
 

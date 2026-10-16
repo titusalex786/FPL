@@ -274,4 +274,40 @@ describe('Auction Bidding Fix & Regression Tests', () => {
     expect(controlSource).toContain("style={{ objectFit: 'contain' }}");
     expect(controlSource).not.toContain("className=\"h-40 w-full rounded-xl object-cover md:w-[150px]\"");
   });
+
+  it('verifies migration 20261031040000 disables countdown timer after first bid is placed', () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), 'supabase', 'migrations', '20261031040000_disable_timer_after_first_bid.sql'),
+      'utf8'
+    );
+
+    // Verifies deadline is only enforced before first bid
+    expect(migration).toContain('IF v_lot.current_highest_bid IS NULL THEN');
+    expect(migration).toContain("RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'BID_DEADLINE_EXPIRED';");
+
+    // Verifies bid_deadline_at is set to NULL on bid placement to disable timer
+    expect(migration).toContain('bid_deadline_at = NULL');
+  });
+
+  it('verifies control page disables timer and performs fast optimistic bidding updates', () => {
+    const controlSource = readFileSync(
+      resolve(process.cwd(), 'src', 'app', 'manager', 'auctions', '[auctionId]', 'control', 'page.tsx'),
+      'utf8'
+    );
+
+    // Verifies secondsRemaining returns null when currentBid is present
+    expect(controlSource).toContain('if (liveLot.currentBid) return null;');
+
+    // Verifies Bidding Open badge displays when timer is disabled
+    expect(controlSource).toContain('⚡ Bidding Open (Timer Disabled)');
+
+    // Verifies canBid does not block bids when opening bid has been placed
+    expect(controlSource).toContain('const isOpeningBidExpired = !liveLot?.currentBid && secondsRemaining === 0;');
+    expect(controlSource).toContain('!isOpeningBidExpired');
+
+    // Verifies optimistic local state update in handleAdminBid
+    expect(controlSource).toContain('setBiddingTeamId(null);');
+    expect(controlSource).toContain('void refresh(false);');
+  });
 });
+

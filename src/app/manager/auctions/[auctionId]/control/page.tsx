@@ -328,6 +328,8 @@ export default function AuctionControlPanelPage() {
 
   const secondsRemaining = useMemo(() => {
     if (!liveLot) return null;
+    // Once 1st bid is placed, timer is disabled for all players
+    if (liveLot.currentBid) return null;
     if (isAuctionPaused && typeof liveLot.pausedRemainingSeconds === 'number') {
       return Math.max(0, liveLot.pausedRemainingSeconds);
     }
@@ -414,6 +416,7 @@ export default function AuctionControlPanelPage() {
 
   async function handleAdminBid(teamOwnerId: string, amount: number) {
     if (!liveLot || biddingTeamId) return;
+    const biddingTeam = data?.teams.find((t) => t.teamOwnerId === teamOwnerId);
     setBiddingTeamId(teamOwnerId);
     setError(null);
     setNotice(null);
@@ -427,16 +430,63 @@ export default function AuctionControlPanelPage() {
           bidAmount: amount,
         }),
       });
-      const payload: unknown = await response.json().catch(() => ({}));
+      const payload: any = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(getErrorMessage(payload, 'Unable to place bid.'));
       }
-      setNotice(`Bid of ₹${amount.toLocaleString('en-IN')} placed successfully.`);
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to place bid.');
-    } finally {
+
+      // 1. Immediately apply the successful bid to local state
+      // This unlocks buttons and updates the leading bidder in milliseconds
+      setData((prev) => {
+        if (!prev) return prev;
+        const prevBid = liveLot.currentBid ?? 0;
+        const diff = amount - prevBid;
+
+        const updatedLots = prev.lots.map((lot) => {
+          if (lot.id === liveLot.id) {
+            return {
+              ...lot,
+              currentBid: amount,
+              currentTeamOwnerId: teamOwnerId,
+              currentTeamName: biddingTeam?.teamName || 'Leading Team',
+              bidDeadlineAt: null, // Timer is disabled after 1st bid
+            };
+          }
+          return lot;
+        });
+
+        const updatedTeams = prev.teams.map((t) => {
+          if (t.teamOwnerId === teamOwnerId) {
+            const newKittyUsed = t.kittyUsed + diff;
+            const newRemaining = Math.max(0, t.remainingKitty - diff);
+            return {
+              ...t,
+              kittyUsed: newKittyUsed,
+              remainingKitty: newRemaining,
+              maximumAffordableCurrentBid: Math.max(
+                0,
+                newRemaining - (t.playersRemaining > 1 ? (t.playersRemaining - 1) * (currentConfig?.minimumReserve ?? 5000) : 0)
+              ),
+            };
+          }
+          return t;
+        });
+
+        return {
+          ...prev,
+          lots: updatedLots,
+          teams: updatedTeams,
+        };
+      });
+
+      setNotice(`Bid of ₹${amount.toLocaleString('en-IN')} placed for ${biddingTeam?.teamName || 'team'}!`);
+      // 2. Unblock bidding state immediately so the manager can click next team right away!
       setBiddingTeamId(null);
+      // 3. Trigger background non-blocking refresh to keep events/rosters synchronized
+      void refresh(false);
+    } catch (cause) {
+      setBiddingTeamId(null);
+      setError(cause instanceof Error ? cause.message : 'Unable to place bid.');
     }
   }
 
@@ -933,31 +983,37 @@ export default function AuctionControlPanelPage() {
                 <span className={`rounded-lg px-2.5 py-1 font-mono text-xs font-bold ${
                   isAuctionPaused
                     ? 'border border-amber-400/40 bg-amber-400/10 text-amber-300'
-                    : secondsRemaining === 0
-                      ? 'bg-rose-500/20 text-rose-300'
-                      : 'bg-amber-400/10 text-amber-200'
+                    : liveLot.currentBid
+                      ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : secondsRemaining === 0
+                        ? 'bg-rose-500/20 text-rose-300'
+                        : 'bg-amber-400/10 text-amber-200'
                 }`}>
                   {isAuctionPaused
                     ? `⏸ Paused (${secondsRemaining ?? 0}s)`
-                    : secondsRemaining === 0
-                      ? 'Timer expired'
-                      : `${secondsRemaining}s remaining`}
+                    : liveLot.currentBid
+                      ? '⚡ Bidding Open (Timer Disabled)'
+                      : secondsRemaining === 0
+                        ? 'Timer expired'
+                        : `${secondsRemaining}s remaining`}
                 </span>
 
-                <button
-                  type="button"
-                  disabled={extendingTimer || busy || !isLotBiddingActive}
-                  onClick={() => void handleExtendTimer(60)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-300 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
-                  title="Add exactly 60 seconds to this active lot timer"
-                >
-                  {extendingTimer ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Clock3 className="h-3.5 w-3.5" />
-                  )}
-                  +60s Timer
-                </button>
+                {!liveLot.currentBid && (
+                  <button
+                    type="button"
+                    disabled={extendingTimer || busy || !isLotBiddingActive}
+                    onClick={() => void handleExtendTimer(60)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-300 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+                    title="Add exactly 60 seconds to this active lot timer"
+                  >
+                    {extendingTimer ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Clock3 className="h-3.5 w-3.5" />
+                    )}
+                    +60s Timer
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1198,12 +1254,13 @@ export default function AuctionControlPanelPage() {
             const hasRemainingSlots = team.playersRemaining > 0;
             const isThisTeamBidding = biddingTeamId === team.teamOwnerId;
             const anyBidInFlight = biddingTeamId !== null;
+            const isOpeningBidExpired = !liveLot?.currentBid && secondsRemaining === 0;
             const canBid =
               Boolean(liveLot) &&
               !isLeading &&
               canAfford &&
               hasRemainingSlots &&
-              secondsRemaining !== 0 &&
+              !isOpeningBidExpired &&
               !anyBidInFlight &&
               !busy &&
               !isAuctionPaused &&

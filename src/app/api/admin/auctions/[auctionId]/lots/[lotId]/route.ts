@@ -56,12 +56,30 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       || (body.action !== 'START'
         && body.action !== 'SETTLE'
         && body.action !== 'END_UNSOLD'
-        && body.action !== 'SKIP')
+        && body.action !== 'SKIP'
+        && body.action !== 'EXTEND_TIMER')
     ) {
-      return NextResponse.json({ error: 'Action must be START, SETTLE, END_UNSOLD, or SKIP' }, { status: 400 });
+      return NextResponse.json({ error: 'Action must be START, SETTLE, END_UNSOLD, SKIP, or EXTEND_TIMER' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
+
+    if (body.action === 'EXTEND_TIMER') {
+      const seconds = typeof (body as any).seconds === 'number' && (body as any).seconds > 0
+        ? (body as any).seconds
+        : typeof (body as any).additionalSeconds === 'number' && (body as any).additionalSeconds > 0
+          ? (body as any).additionalSeconds
+          : 60;
+      const { data, error } = await supabase.rpc('extend_auction_lot_timer_v1', {
+        p_auction_id: auctionId,
+        p_lot_id: lotId,
+        p_seconds: seconds,
+        p_actor_id: user.id,
+      });
+
+      if (error) throw error;
+      return NextResponse.json({ success: true, lot: data, extended_by_seconds: seconds, secondsAdded: seconds });
+    }
 
     if (body.action === 'START') {
       await supabase

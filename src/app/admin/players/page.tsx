@@ -109,14 +109,18 @@ export default function AdminPlayersPage() {
   };
 
   const handleDeletePlayerRegistration = async (id: string, name: string) => {
-    if (!window.confirm(`Delete registration for "${name}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Withdraw or remove registration for "${name}"? If referenced by an auction, it will be safely withdrawn to protect historical records.`)) return;
     try {
       const res = await fetch(`/api/admin/registrations/${id}`, { method: 'DELETE' });
       const resData = await res.json();
-      if (res.ok) fetchPlayers();
-      else alert(resData.error || 'Failed to delete entry');
+      if (res.ok) {
+        alert(resData.message || 'Registration updated successfully.');
+        fetchPlayers();
+      } else {
+        alert(resData.error || 'Failed to process entry');
+      }
     } catch {
-      alert('Network error deleting entry');
+      alert('Network error processing entry');
     }
   };
 

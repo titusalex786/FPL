@@ -15,7 +15,6 @@ import {
   Monitor,
   Pause,
   Play,
-  Plus,
   RefreshCw,
   Save,
   Search,
@@ -28,6 +27,8 @@ import {
   X,
   XCircle,
   Trash2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuctionRealtime } from '@/lib/auction/use-auction-realtime';
@@ -79,6 +80,7 @@ type AuctionLot = {
   soldAmount: number | null;
   soldAt: string | null;
   bidDeadlineAt: string | null;
+  pausedRemainingSeconds?: number | null;
   player: {
     id: string;
     name: string;
@@ -169,6 +171,13 @@ export default function AuctionControlPanelPage() {
   const [configuration, setConfiguration] = useState<AuctionConfiguration | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [biddingTeamId, setBiddingTeamId] = useState<string | null>(null);
+  const [extendingTimer, setExtendingTimer] = useState(false);
+  const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
+  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
+  const [showBudgets, setShowBudgets] = useState(false);
+  const [showSelections, setShowSelections] = useState(false);
+  const [showAuditTrail, setShowAuditTrail] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -237,14 +246,21 @@ export default function AuctionControlPanelPage() {
     () => (data?.lots || []).filter((lot) => lot.status === 'AVAILABLE'),
     [data]
   );
-  const secondsRemaining = liveLot?.bidDeadlineAt
-    ? Math.max(0, Math.ceil((new Date(liveLot.bidDeadlineAt).getTime() - now) / 1000))
-    : null;
-  const isAuctionActive = data ? ['DRAFT', 'OPEN', 'LIVE'].includes(data.auction.status) : false;
+
   const isAuctionPaused = data?.auction.status === 'PAUSED';
+  const isAuctionActive = data ? ['DRAFT', 'OPEN', 'LIVE'].includes(data.auction.status) : false;
   const canEditSelection = data
     ? ['DRAFT', 'OPEN'].includes(data.auction.status)
     : false;
+
+  const secondsRemaining = useMemo(() => {
+    if (!liveLot) return null;
+    if (isAuctionPaused && typeof liveLot.pausedRemainingSeconds === 'number') {
+      return Math.max(0, liveLot.pausedRemainingSeconds);
+    }
+    if (!liveLot.bidDeadlineAt) return null;
+    return Math.max(0, Math.ceil((new Date(liveLot.bidDeadlineAt).getTime() - now) / 1000));
+  }, [liveLot, isAuctionPaused, now]);
 
   const config = configuration || data?.auction.configuration;
 
@@ -324,12 +340,58 @@ export default function AuctionControlPanelPage() {
   }
 
   async function handleAdminBid(teamOwnerId: string, amount: number) {
-    if (!liveLot) return;
-    await postAction(`/api/admin/auctions/${auctionId}/bid`, {
-      lotId: liveLot.id,
-      teamOwnerId,
-      bidAmount: amount,
-    });
+    if (!liveLot || biddingTeamId) return;
+    setBiddingTeamId(teamOwnerId);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/admin/auctions/${auctionId}/bid`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lotId: liveLot.id,
+          teamOwnerId,
+          bidAmount: amount,
+        }),
+      });
+      const payload: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(getErrorMessage(payload, 'Unable to place bid.'));
+      }
+      setNotice(`Bid of ₹${amount.toLocaleString('en-IN')} placed successfully.`);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to place bid.');
+    } finally {
+      setBiddingTeamId(null);
+    }
+  }
+
+  async function handleExtendTimer(additionalSeconds = 60) {
+    if (!liveLot || extendingTimer) return;
+    setExtendingTimer(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/admin/auctions/${auctionId}/lots/${liveLot.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'EXTEND_TIMER',
+          additionalSeconds,
+        }),
+      });
+      const payload: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(getErrorMessage(payload, 'Unable to extend timer.'));
+      }
+      setNotice(`Timer extended by +${additionalSeconds} seconds.`);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to extend timer.');
+    } finally {
+      setExtendingTimer(false);
+    }
   }
 
   async function handleAdjustBudgetSubmit(e: React.FormEvent) {
@@ -439,24 +501,21 @@ export default function AuctionControlPanelPage() {
   ];
 
   return (
-    <main className="space-y-6">
-      {/* Practice Auction Banner */}
+    <main className="w-full space-y-4">
+      {/* Practice Sandbox Alert */}
       {isPracticeAuction && (
-        <div className="rounded-2xl border border-purple-500/40 bg-purple-950/25 p-4 text-xs font-medium text-purple-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg">
-          <div className="flex items-center gap-2.5">
-            <span className="text-xl">🧪</span>
-            <div>
-              <span className="font-bold text-purple-200 block text-sm">PRACTICE AUCTION (DISPOSABLE SANDBOX)</span>
-              <span className="text-purple-300/80">
-                Running in disposable practice mode with existing tournament participants. Real registrations (100), player profiles (164), payments (90), and team owners (10) are guaranteed protected.
-              </span>
-            </div>
+        <div className="rounded-xl border border-purple-500/40 bg-purple-950/30 px-3.5 py-2 text-xs font-medium text-purple-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🧪</span>
+            <span>
+              <b className="text-purple-300">PRACTICE AUCTION:</b> Disposable testbed. Real tournament registrations (100) and owners (10) remain protected.
+            </span>
           </div>
           <button
             type="button"
             onClick={handlePracticeCleanup}
             disabled={busy}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-950/50 hover:bg-rose-900/80 px-3.5 py-2 font-bold text-rose-300 shrink-0 text-xs transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1 self-start sm:self-auto rounded-lg border border-rose-500/40 bg-rose-950/50 hover:bg-rose-900/80 px-2.5 py-1 font-bold text-rose-300 text-xs transition-colors disabled:opacity-50"
           >
             <Trash2 className="h-3.5 w-3.5" />
             <span>Clean Up Practice</span>
@@ -464,587 +523,793 @@ export default function AuctionControlPanelPage() {
         </div>
       )}
 
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* 1. COMPACT HEADER */}
+      <header className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-3 sm:p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Link
-            href="/manager"
-            className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" /> Manager dashboard
-          </Link>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-black text-white sm:text-3xl">{data.auction.name}</h1>
-            <span className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide ${
-              isAuctionPaused
-                ? 'border-amber-400/30 bg-amber-400/10 text-amber-300'
-                : 'border-teal-400/30 bg-teal-400/10 text-teal-300'
-            }`}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/manager"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-white mr-1"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" /> Dashboard
+            </Link>
+            <h1 className="text-xl font-black text-white sm:text-2xl">{data.auction.name}</h1>
+            <span
+              className={`rounded-full border px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${
+                isAuctionPaused
+                  ? 'border-amber-400/40 bg-amber-400/10 text-amber-300'
+                  : 'border-teal-400/40 bg-teal-400/10 text-teal-300'
+              }`}
+            >
               {data.auction.status}
             </span>
+            {data.auction.currentRoundNumber && (
+              <span className="rounded-full border border-slate-700 bg-slate-800 px-2.5 py-0.5 text-xs font-bold text-slate-300">
+                Round {data.auction.currentRoundNumber}
+              </span>
+            )}
             {isPracticeAuction && (
-              <span className="rounded-full border border-purple-500/40 bg-purple-500/15 px-3 py-1 text-xs font-bold text-purple-300">
+              <span className="rounded-full border border-purple-500/40 bg-purple-500/15 px-2 py-0.5 text-xs font-bold text-purple-300">
                 🧪 Practice
               </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-0.5 text-xs text-slate-400">
             {data.auction.tournamentName}
-            {data.auction.currentRoundNumber
-              ? ` · Round ${data.auction.currentRoundNumber}`
-              : ''}
           </p>
         </div>
+
         <div className="flex flex-wrap items-center gap-2">
-          {/* Auction Lifecycle Controls */}
+          {/* Pause / Resume / Start Button */}
           {data.auction.status === 'DRAFT' ? (
             <button
+              type="button"
               onClick={() => void postAction(`/api/admin/auctions/${auctionId}/open`)}
               disabled={busy}
-              className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg hover:bg-teal-500 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-teal-600 px-3.5 py-2 text-xs font-bold text-white shadow-md hover:bg-teal-500 disabled:opacity-50"
             >
-              <Play className="h-4 w-4" /> Start Auction
+              <Play className="h-3.5 w-3.5" /> Start Auction
             </button>
           ) : isAuctionPaused ? (
             <button
+              type="button"
               onClick={() => void postAction(`/api/admin/auctions/${auctionId}/resume`)}
               disabled={busy}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
             >
-              <Play className="h-4 w-4" /> Resume Auction
+              <Play className="h-3.5 w-3.5" /> Resume Auction
             </button>
           ) : isAuctionActive ? (
             <button
+              type="button"
               onClick={() => void postAction(`/api/admin/auctions/${auctionId}/pause`, { reason: 'Paused by manager' })}
               disabled={busy}
-              className="inline-flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm font-bold text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
             >
-              <Pause className="h-4 w-4" /> Pause Auction
+              <Pause className="h-3.5 w-3.5" /> Pause Auction
             </button>
           ) : null}
 
+          {/* Projector View */}
           <Link
             href={`/auction/${auctionId}/live`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-xl border border-teal-500/40 bg-teal-500/10 px-4 py-2.5 text-sm font-semibold text-teal-300 hover:bg-teal-500/20"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-teal-500/40 bg-teal-500/10 px-3.5 py-2 text-xs font-semibold text-teal-300 hover:bg-teal-500/20"
           >
-            <Monitor className="h-4 w-4" /> Projector View
+            <Monitor className="h-3.5 w-3.5" /> Projector
             <ExternalLink className="h-3 w-3 opacity-60" />
           </Link>
+
+          {/* Refresh State */}
           <button
+            type="button"
             onClick={() => void refresh(true)}
             disabled={loading || busy}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:border-teal-500/50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3.5 py-2 text-xs font-semibold text-slate-200 hover:border-teal-500/50 disabled:opacity-50"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh state
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
           </button>
-          {isPracticeAuction && (
-            <button
-              onClick={() => void handlePracticeCleanup()}
-              disabled={busy}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-rose-950/40 px-4 py-2.5 text-sm font-semibold text-rose-300 hover:bg-rose-900/60 disabled:opacity-50"
-              title="Safely delete only this practice auction and verify protected tables"
-            >
-              <Trash2 className="h-4 w-4" />
-              Clean Up Practice
-            </button>
-          )}
+
+          {/* Auction Settings Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setShowSettingsDrawer((prev) => !prev)}
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-colors ${
+              showSettingsDrawer
+                ? 'border-teal-500 bg-teal-500/20 text-white'
+                : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-teal-500/50 hover:text-white'
+            }`}
+          >
+            <Sliders className="h-3.5 w-3.5" />
+            Auction Settings
+          </button>
+
+          {/* Realtime status dot */}
+          <div className="flex items-center gap-1.5 pl-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                connectionStatus === 'LIVE'
+                  ? 'bg-emerald-400'
+                  : connectionStatus === 'OFFLINE'
+                    ? 'bg-rose-400'
+                    : 'animate-pulse bg-amber-300'
+              }`}
+            />
+            <span className="hidden sm:inline">{connectionStatus}</span>
+          </div>
         </div>
       </header>
 
-      <div className="flex items-center justify-end gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-        <span className={`h-2 w-2 rounded-full ${
-          connectionStatus === 'LIVE'
-            ? 'bg-emerald-400'
-            : connectionStatus === 'OFFLINE'
-              ? 'bg-rose-400'
-              : 'animate-pulse bg-amber-300'
-        }`} />
-        {connectionStatus === 'LIVE'
-          ? 'LIVE'
-          : connectionStatus === 'OFFLINE'
-            ? 'OFFLINE — RECONNECTING'
-            : 'RECONNECTING…'}
-      </div>
+      {/* COLLAPSIBLE SETTINGS DRAWER */}
+      {showSettingsDrawer && (
+        <section className="rounded-2xl border border-teal-500/30 bg-slate-900/95 p-4 sm:p-5 shadow-2xl backdrop-blur-md transition-all">
+          <div className="mb-4 flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <Sliders className="h-5 w-5 text-teal-400" />
+              <div>
+                <h2 className="text-base font-bold text-white">Auction Configuration & Rules</h2>
+                <p className="text-xs text-slate-400">Updates use the validated server configuration RPC.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSettingsDrawer(false)}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+              title="Close settings drawer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {configInputs.map(({ field, label }) => (
+              <label key={field} className="text-xs font-medium text-slate-400">
+                {label}
+                <input
+                  type="number"
+                  min={field === 'bidTimerSeconds' ? 1 : 0}
+                  value={currentConfig[field]}
+                  disabled={data.auction.configurationLocked || busy}
+                  onChange={(event) => setConfigurationField(field, Number(event.target.value))}
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white outline-none focus:border-teal-500 disabled:opacity-50"
+                />
+              </label>
+            ))}
+            <label className="text-xs font-medium text-slate-400">
+              Maximum bid (optional)
+              <input
+                type="number"
+                min={currentConfig.baseBid}
+                value={currentConfig.maximumBid ?? ''}
+                disabled={data.auction.configurationLocked || busy}
+                onChange={(event) => setConfigurationField(
+                  'maximumBid',
+                  event.target.value === '' ? null : Number(event.target.value)
+                )}
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white outline-none focus:border-teal-500 disabled:opacity-50"
+              />
+            </label>
+            <label className="flex items-center justify-between rounded-lg bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-300">
+              Allow owner self-purchase
+              <input
+                type="checkbox"
+                checked={currentConfig.allowOwnerSelfPurchase}
+                disabled={data.auction.configurationLocked || busy}
+                onChange={(event) => setConfigurationField('allowOwnerSelfPurchase', event.target.checked)}
+                className="h-4 w-4 accent-teal-500"
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-3">
+            <div className="text-xs text-slate-400">
+              Icon players allocated: <b className="text-white">{currentConfig.iconPlayersAllocated}</b>
+              {data.auction.configurationLocked && (
+                <span className="ml-3 text-amber-300">Configuration is locked by the auction state or existing records.</span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {!data.auction.configurationLocked && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void saveConfiguration()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-xs font-bold text-white hover:bg-teal-500 disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4" /> Save Configuration
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowSettingsDrawer(false)}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+              >
+                Close Settings
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {(error || notice) && (
         <div
           role={error ? 'alert' : 'status'}
-          className={`rounded-xl border px-4 py-3 text-sm ${
+          className={`rounded-xl border px-3.5 py-2.5 text-xs sm:text-sm ${
             error
-              ? 'border-rose-500/30 bg-rose-950/20 text-rose-200'
-              : 'border-emerald-500/30 bg-emerald-950/20 text-emerald-200'
+              ? 'border-rose-500/30 bg-rose-950/30 text-rose-200'
+              : 'border-emerald-500/30 bg-emerald-950/30 text-emerald-200'
           }`}
         >
           {error || notice}
         </div>
       )}
 
-      {/* Overview Stats */}
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: 'Players sold', value: data.overview.playersSold, icon: Users },
-          { label: 'Players unsold', value: data.overview.playersUnsold, icon: Activity },
-          { label: 'Retry pool remaining', value: data.overview.retryPoolRemaining, icon: RefreshCw },
-          { label: 'Total money spent', value: `₹${money(data.overview.totalMoneySpent)}`, icon: Coins },
-        ].map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <div key={stat.label} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
-                {stat.label}
-                <Icon className="h-4 w-4 text-teal-400" />
-              </div>
-              <p className="mt-3 text-2xl font-black text-white">{stat.value}</p>
-            </div>
-          );
-        })}
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.8fr)]">
-        <div className="space-y-6">
-          {/* Current Live Lot */}
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6">
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold text-white">Current live lot</h2>
-                <p className="mt-1 text-xs text-slate-400">Live auction state is refreshed automatically via Realtime.</p>
-              </div>
-              {liveLot && (
-                <span className={`rounded-lg px-3 py-1.5 font-mono text-sm font-bold ${
-                  secondsRemaining === 0 ? 'bg-rose-500/15 text-rose-300' : 'bg-amber-400/10 text-amber-200'
-                }`}>
-                  {secondsRemaining === 0 ? 'Timer expired' : `${secondsRemaining}s remaining`}
+      {/* 2. COMPACT CURRENT LOT SECTION */}
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 sm:p-4">
+        {liveLot ? (
+          <div className="space-y-3">
+            {/* Top header row: Lot, Role, Status & Countdown Timer */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="rounded-md bg-teal-500/10 px-2 py-0.5 text-xs font-black uppercase tracking-wider text-teal-300">
+                  Lot {liveLot.lotNumber}
                 </span>
-              )}
+                <span className="text-xs font-semibold text-slate-400">
+                  {liveLot.player?.role || 'Player'}
+                </span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                  liveLot.status === 'IN_PROGRESS'
+                    ? 'bg-emerald-500/10 text-emerald-300'
+                    : 'bg-slate-800 text-slate-400'
+                }`}>
+                  {liveLot.status}
+                </span>
+              </div>
+
+              {/* Countdown badge & Extend Timer +60s Button */}
+              <div className="flex items-center gap-2">
+                <span className={`rounded-lg px-2.5 py-1 font-mono text-xs font-bold ${
+                  isAuctionPaused
+                    ? 'border border-amber-400/40 bg-amber-400/10 text-amber-300'
+                    : secondsRemaining === 0
+                      ? 'bg-rose-500/20 text-rose-300'
+                      : 'bg-amber-400/10 text-amber-200'
+                }`}>
+                  {isAuctionPaused
+                    ? `⏸ Paused (${secondsRemaining ?? 0}s)`
+                    : secondsRemaining === 0
+                      ? 'Timer expired'
+                      : `${secondsRemaining}s remaining`}
+                </span>
+
+                <button
+                  type="button"
+                  disabled={extendingTimer || busy || liveLot.status !== 'IN_PROGRESS'}
+                  onClick={() => void handleExtendTimer(60)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-300 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+                  title="Add exactly 60 seconds to this active lot timer"
+                >
+                  {extendingTimer ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Clock3 className="h-3.5 w-3.5" />
+                  )}
+                  +60s Timer
+                </button>
+              </div>
             </div>
 
-            {liveLot ? (
-              <div className="space-y-6">
-                <div className="grid gap-5 md:grid-cols-[150px_1fr]">
-                  {liveLot.player?.image ? (
-                    <div className="flex h-40 w-full items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-slate-950/80 p-1 md:w-[150px]">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={liveLot.player.image}
-                        alt=""
-                        className="max-h-full max-w-full rounded-lg object-contain"
-                        style={{ objectFit: 'contain' }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex h-40 items-center justify-center rounded-xl bg-slate-800 text-slate-500 md:w-[150px]">
-                      <Users className="h-8 w-8" />
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-widest text-teal-300">
-                          Lot {liveLot.lotNumber} · {liveLot.player?.role || 'Player'}
-                        </p>
-                        <h3 className="mt-1 text-xl font-black text-white">
-                          {liveLot.player?.name || 'Player details unavailable'}
-                        </h3>
-                        <p className="mt-1 text-sm text-slate-400">
-                          {liveLot.player?.battingStyle || '—'} batting
-                          {liveLot.player?.bowlingStyle ? ` · ${liveLot.player.bowlingStyle}` : ''}
-                          {liveLot.player?.jerseySize ? ` · Size ${toNumericJerseySize(liveLot.player.jerseySize)}` : ''}
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold uppercase text-emerald-300">
-                        {liveLot.status}
-                      </span>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3">
-                      <div className="rounded-xl bg-slate-950/70 p-3">
-                        <p className="text-[11px] uppercase tracking-wide text-slate-500">Current bid</p>
-                        <p className="mt-1 text-xl font-black text-white">₹{money(liveLot.currentBid)}</p>
-                      </div>
-                      <div className="rounded-xl bg-slate-950/70 p-3">
-                        <p className="text-[11px] uppercase tracking-wide text-slate-500">Leading team</p>
-                        <p className="mt-1 truncate text-base font-bold text-white">
-                          {liveLot.currentTeamName || 'No bid yet'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        disabled={busy || secondsRemaining !== 0 || !liveLot.currentBid}
-                        onClick={() => void postAction(
-                          `/api/admin/auctions/${auctionId}/lots/${liveLot.id}`,
-                          { action: 'SETTLE' }
-                        )}
-                        className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        <Check className="h-4 w-4" /> Settle expired lot
-                      </button>
-                      <button
-                        disabled={busy}
-                        onClick={() => void postAction(
-                          `/api/admin/auctions/${auctionId}/lots/${liveLot.id}`,
-                          { action: 'END_UNSOLD' }
-                        )}
-                        className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-bold text-slate-300 hover:border-amber-500/50 hover:text-amber-200 disabled:opacity-40"
-                      >
-                        <XCircle className="h-4 w-4" /> Mark Unsold
-                      </button>
-                      {/* Skip Lot Before Bids */}
-                      {!liveLot.currentBid && (
-                        <button
-                          disabled={busy}
-                          onClick={() => void postAction(
-                            `/api/admin/auctions/${auctionId}/lots/${liveLot.id}`,
-                            { action: 'SKIP' }
-                          )}
-                          className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-bold text-slate-300 hover:border-teal-500/50 hover:text-teal-200 disabled:opacity-40"
-                        >
-                          <SkipForward className="h-4 w-4" /> Skip lot
-                        </button>
-                      )}
-                      <button
-                        disabled={busy || !['OPEN', 'LIVE'].includes(data.auction.status)}
-                        onClick={confirmEndAuction}
-                        className="inline-flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-950/30 px-4 py-2 text-sm font-bold text-rose-200 hover:bg-rose-950/60 disabled:opacity-40"
-                      >
-                        <Square className="h-4 w-4" /> End auction
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 6: Admin-Controlled Bidding Grid */}
-                <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div>
-                      <h4 className="font-bold text-white">Admin Team Bidding</h4>
-                      <p className="text-xs text-slate-400">
-                        Next valid bid: <b className="text-teal-300">₹{money(nextValidBid)}</b>
-                      </p>
-                    </div>
-                    <span className="text-xs text-slate-500">Only Admin places bids</span>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {data.teams.map((team) => {
-                      const isLeading = team.teamOwnerId === liveLot.currentTeamOwnerId;
-                      const reserveReq = team.playersRemaining > 1 ? (team.playersRemaining - 1) * currentConfig.minimumReserve : 0;
-                      const canAfford = team.maximumAffordableCurrentBid >= nextValidBid;
-                      const hasRemainingSlots = team.playersRemaining > 0;
-                      const canBid = !isLeading && canAfford && hasRemainingSlots && secondsRemaining !== 0 && !busy && !isAuctionPaused;
-
-                      return (
-                        <div
-                          key={team.teamOwnerId}
-                          className={`rounded-lg border p-3 transition-colors ${
-                            isLeading
-                              ? 'border-emerald-500/50 bg-emerald-950/20'
-                              : 'border-slate-800 bg-slate-900/60'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-white">{team.teamName}</span>
-                            {isLeading && (
-                              <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
-                                LEADING
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-2 grid grid-cols-2 gap-1 text-[11px] text-slate-400">
-                            <div>Kitty: <b className="text-slate-200">₹{money(team.remainingKitty)}</b></div>
-                            <div>Spent: <b className="text-slate-200">₹{money(team.kittyUsed)}</b></div>
-                            <div>Bought: <b className="text-slate-200">{team.playersBought}</b> (left: {team.playersRemaining})</div>
-                            <div>Reserve: <b className="text-slate-200">₹{money(reserveReq)}</b></div>
-                            <div className="col-span-2">
-                              Max Bid: <b className="text-amber-200">₹{money(team.maximumAffordableCurrentBid)}</b>
-                            </div>
-                          </div>
-                          <div className="mt-3">
-                            <button
-                              disabled={!canBid}
-                              onClick={() => void handleAdminBid(team.teamOwnerId, nextValidBid)}
-                              className={`w-full rounded-lg py-2 text-xs font-bold transition-all ${
-                                isLeading
-                                  ? 'cursor-not-allowed bg-emerald-800/40 text-emerald-300 opacity-60'
-                                  : canBid
-                                    ? 'bg-teal-600 text-white shadow-md hover:bg-teal-500 active:scale-95'
-                                    : 'cursor-not-allowed bg-slate-800 text-slate-500 opacity-50'
-                              }`}
-                            >
-                              {isLeading
-                                ? 'Current Leader'
-                                : !hasRemainingSlots
-                                  ? 'Squad Full'
-                                  : !canAfford
-                                    ? 'Cannot Afford'
-                                    : `BID ₹${money(nextValidBid)}`}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-slate-700 p-6 text-center">
-                <Clock3 className="mx-auto h-7 w-7 text-slate-500" />
-                <p className="mt-3 font-semibold text-white">No lot is live</p>
-                <p className="mt-1 text-sm text-slate-400">Start the next available lot or reveal a random player when the auction is active.</p>
-                <div className="mt-4 flex flex-wrap justify-center gap-2">
-                  {availableLots.length > 0 && isAuctionActive && !isAuctionPaused && (
-                    <button
-                      id="reveal-random-player-btn"
-                      disabled={busy}
-                      onClick={() => void postAction(
-                        `/api/admin/auctions/${auctionId}/lots/random`,
-                        {}
-                      )}
-                      className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2 text-sm font-bold text-white shadow-lg hover:from-amber-400 hover:to-amber-500 disabled:opacity-50"
-                    >
-                      <span>🎲 Reveal Random Player</span>
-                    </button>
-                  )}
-                  {data.auction.status === 'DRAFT' && (
-                    <button
-                      disabled={busy}
-                      onClick={() => void postAction(`/api/admin/auctions/${auctionId}/open`)}
-                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
-                    >
-                      <Play className="h-4 w-4" /> Open Auction
-                    </button>
-                  )}
-                  {nextLot && isAuctionActive && !isAuctionPaused && (
-                    <button
-                      disabled={busy}
-                      onClick={() => void postAction(
-                        `/api/admin/auctions/${auctionId}/lots/${nextLot.id}`,
-                        { action: 'START' }
-                      )}
-                      className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-bold text-white hover:bg-teal-500 disabled:opacity-50"
-                    >
-                      <Play className="h-4 w-4" /> Start lot {nextLot.lotNumber}
-                    </button>
-                  )}
-                  {['DRAFT', 'OPEN'].includes(data.auction.status) && (
-                    <button
-                      disabled={busy}
-                      onClick={() => void postAction(`/api/admin/auctions/${auctionId}/pool`)}
-                      className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-teal-500/50 disabled:opacity-50"
-                    >
-                      <RefreshCw className="h-4 w-4" /> Populate pool
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {liveLot && (
-              <div className="mt-5 border-t border-slate-800 pt-4">
-                <h3 className="mb-3 text-sm font-bold text-slate-200">Bid history</h3>
-                {data.bidHistory.length ? (
-                  <div className="max-h-48 space-y-2 overflow-y-auto">
-                    {data.bidHistory.map((bid) => (
-                      <div key={bid.id} className="flex items-center justify-between rounded-lg bg-slate-950/60 px-3 py-2 text-sm">
-                        <span className="text-slate-300">{bid.teamName}</span>
-                        <span className="font-bold text-white">₹{money(bid.amount)}</span>
-                        <time className="text-xs text-slate-500">
-                          {new Date(bid.createdAt).toLocaleTimeString()}
-                        </time>
-                      </div>
-                    ))}
-                  </div>
+            {/* Main compact player card + live bid stats */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              {/* Responsive centered object-contain player image (never cropped or stretched) */}
+              <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-slate-950 p-1">
+                {liveLot.player?.image ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={liveLot.player.image}
+                    alt=""
+                    className="max-h-full max-w-full rounded-lg object-contain"
+                    style={{ objectFit: 'contain' }}
+                  />
                 ) : (
-                  <p className="text-sm text-slate-500">No bids recorded for this lot.</p>
+                  <Users className="h-8 w-8 text-slate-600" />
                 )}
               </div>
-            )}
-          </section>
 
-          {/* Section 5 & 10: Team Budgets & Financial Adjustments */}
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold text-white">Team budgets & Auditable Adjustments</h2>
-                <p className="mt-1 text-xs text-slate-400">Authoritative balance and administrative point adjustment.</p>
+              {/* Player details */}
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate text-lg font-black text-white">
+                  {liveLot.player?.name || 'Player details unavailable'}
+                </h3>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {liveLot.player?.battingStyle || '—'} batting
+                  {liveLot.player?.bowlingStyle ? ` · ${liveLot.player.bowlingStyle}` : ''}
+                  {liveLot.player?.jerseySize ? ` · Size ${toNumericJerseySize(liveLot.player.jerseySize)}` : ''}
+                </p>
+
+                {/* Key live bid stats chips */}
+                <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                  <div className="rounded-lg bg-slate-950/80 px-2.5 py-1">
+                    <span className="text-[10px] uppercase text-slate-500">Current Bid: </span>
+                    <b className="font-mono font-bold text-white">₹{money(liveLot.currentBid)}</b>
+                  </div>
+                  <div className="rounded-lg bg-slate-950/80 px-2.5 py-1">
+                    <span className="text-[10px] uppercase text-slate-500">Leading: </span>
+                    <b className="font-bold text-emerald-300">{liveLot.currentTeamName || 'No bid yet'}</b>
+                  </div>
+                  <div className="rounded-lg bg-slate-950/80 px-2.5 py-1">
+                    <span className="text-[10px] uppercase text-slate-500">Next Valid: </span>
+                    <b className="font-mono font-bold text-teal-300">₹{money(nextValidBid)}</b>
+                  </div>
+                </div>
               </div>
-              <Wallet className="h-5 w-5 text-teal-400" />
+
+              {/* Quick actions for lot */}
+              <div className="flex flex-wrap items-center gap-1.5 sm:flex-col sm:items-stretch sm:justify-center">
+                <button
+                  type="button"
+                  disabled={busy || secondsRemaining !== 0 || !liveLot.currentBid}
+                  onClick={() => void postAction(
+                    `/api/admin/auctions/${auctionId}/lots/${liveLot.id}`,
+                    { action: 'SETTLE' }
+                  )}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40 shadow-sm"
+                >
+                  <Check className="h-3.5 w-3.5" /> Settle Expired
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void postAction(
+                    `/api/admin/auctions/${auctionId}/lots/${liveLot.id}`,
+                    { action: 'END_UNSOLD' }
+                  )}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-300 hover:border-amber-500/50 hover:text-amber-200 disabled:opacity-40"
+                >
+                  <XCircle className="h-3.5 w-3.5" /> Mark Unsold
+                </button>
+                {!liveLot.currentBid && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void postAction(
+                      `/api/admin/auctions/${auctionId}/lots/${liveLot.id}`,
+                      { action: 'SKIP' }
+                    )}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-300 hover:border-teal-500/50 hover:text-teal-200 disabled:opacity-40"
+                  >
+                    <SkipForward className="h-3.5 w-3.5" /> Skip
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedControls(!showAdvancedControls)}
+                  className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-[11px] font-semibold text-slate-400 hover:text-white"
+                >
+                  <Sliders className="h-3 w-3" />
+                  {showAdvancedControls ? 'Hide Controls' : 'More Controls'}
+                </button>
+              </div>
             </div>
-            {data.teams.length ? (
-              <div className="space-y-3">
-                {data.teams.map((team) => (
-                  <article key={team.teamOwnerId} className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-bold text-white">{team.teamName}</h3>
-                        <p className="mt-0.5 text-xs text-slate-500">{team.ownerName}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-slate-400">
-                          {team.playersBought}/{data.auction.configuration.totalPlayersToBuy} purchased
-                        </span>
-                        <button
-                          disabled={busy}
-                          onClick={() => {
-                            setAdjustingTeam({
-                              id: team.teamOwnerId,
-                              name: team.teamName,
-                              current: team.remainingKitty,
-                            });
-                            setAdjustmentAmount(5000);
-                            setAdjustmentReason('');
-                          }}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-semibold text-teal-300 hover:border-teal-500/50 disabled:opacity-50"
-                        >
-                          <Sliders className="h-3 w-3" /> Adjust Points
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-400"
-                        style={{ width: `${Math.max(0, Math.min(100, team.budgetUsedPercent))}%` }}
-                      />
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
-                      <p className="text-slate-400">Remaining <b className="block pt-1 text-sm text-white">₹{money(team.remainingKitty)}</b></p>
-                      <p className="text-slate-400">Spent <b className="block pt-1 text-sm text-white">₹{money(team.kittyUsed)}</b></p>
-                      <p className="text-slate-400">Players left <b className="block pt-1 text-sm text-white">{team.playersRemaining}</b></p>
-                      <p className="text-slate-400">Max affordable bid <b className="block pt-1 text-sm text-amber-200">₹{money(team.maximumAffordableCurrentBid)}</b></p>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="rounded-xl bg-slate-950/50 p-5 text-center text-sm text-slate-400">
-                Budget records will appear when the auction is initialized.
-              </p>
-            )}
-          </section>
 
-          {/* Player Pool and Selections with Search & Filter */}
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold text-white">Player pool and selections</h2>
-                <p className="mt-1 text-xs text-slate-400">Search, filter, and include/exclude participants before the auction begins.</p>
+            {/* Advanced lot controls collapsible */}
+            {showAdvancedControls && (
+              <div className="mt-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400">Active Lot ID:</span>
+                  <code className="text-slate-300 font-mono text-[11px]">{liveLot.id}</code>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={busy || !['OPEN', 'LIVE'].includes(data.auction.status)}
+                    onClick={confirmEndAuction}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-950/40 px-3 py-1.5 text-xs font-bold text-rose-200 hover:bg-rose-950/70 disabled:opacity-40"
+                  >
+                    <Square className="h-3.5 w-3.5" /> End Auction Early
+                  </button>
+                </div>
               </div>
+            )}
+          </div>
+        ) : (
+          /* Empty / between lots view */
+          <div className="rounded-xl border border-dashed border-slate-700/80 p-5 text-center">
+            <Clock3 className="mx-auto h-6 w-6 text-slate-500" />
+            <p className="mt-2 font-bold text-white text-sm">No lot is currently live</p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Start the next available lot or reveal a random player when the auction is active.
+            </p>
+            <div className="mt-3 flex flex-wrap justify-center gap-2">
+              {availableLots.length > 0 && isAuctionActive && !isAuctionPaused && (
+                <button
+                  id="reveal-random-player-btn"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void postAction(
+                    `/api/admin/auctions/${auctionId}/lots/random`,
+                    {}
+                  )}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 px-3.5 py-1.5 text-xs font-bold text-white shadow hover:from-amber-400 hover:to-amber-500 disabled:opacity-50"
+                >
+                  <span>🎲 Reveal Random Player</span>
+                </button>
+              )}
+              {data.auction.status === 'DRAFT' && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void postAction(`/api/admin/auctions/${auctionId}/open`)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  <Play className="h-3.5 w-3.5" /> Open Auction
+                </button>
+              )}
+              {nextLot && isAuctionActive && !isAuctionPaused && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void postAction(
+                    `/api/admin/auctions/${auctionId}/lots/${nextLot.id}`,
+                    { action: 'START' }
+                  )}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-teal-500 disabled:opacity-50"
+                >
+                  <Play className="h-3.5 w-3.5" /> Start lot {nextLot.lotNumber}
+                </button>
+              )}
               {['DRAFT', 'OPEN'].includes(data.auction.status) && (
                 <button
+                  type="button"
                   disabled={busy}
                   onClick={() => void postAction(`/api/admin/auctions/${auctionId}/pool`)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-slate-200 hover:border-teal-500/50 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-teal-500/50 disabled:opacity-50"
                 >
                   <RefreshCw className="h-3.5 w-3.5" /> Populate pool
                 </button>
               )}
             </div>
+          </div>
+        )}
+      </section>
 
-            {/* Search and Filters */}
-            <div className="mb-4 flex flex-wrap items-center gap-3">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search player name or role..."
-                  value={playerSearch}
-                  onChange={(e) => setPlayerSearch(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 text-xs text-white placeholder-slate-500 focus:border-teal-500 focus:outline-none"
-                />
-              </div>
-              <div className="flex items-center gap-1.5 text-xs">
-                <Filter className="h-3.5 w-3.5 text-slate-400" />
-                {(['ALL', 'PLAYER', 'OWNER', 'ICON'] as const).map((filter) => (
+      {/* 3. FIVE TEAM BID BUTTONS IN A SINGLE ROW (5x2 GRID ON DESKTOP) */}
+      <section className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-white">
+            Team Bid Controls ({data.teams.length} Teams)
+          </h2>
+          <span className="text-xs text-slate-400">
+            Next valid bid: <b className="text-teal-300 font-mono">₹{money(nextValidBid)}</b>
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+          {data.teams.map((team) => {
+            const isLeading = Boolean(liveLot && team.teamOwnerId === liveLot.currentTeamOwnerId);
+            const reserveReq = team.playersRemaining > 1 ? (team.playersRemaining - 1) * currentConfig.minimumReserve : 0;
+            const canAfford = team.maximumAffordableCurrentBid >= nextValidBid;
+            const hasRemainingSlots = team.playersRemaining > 0;
+            const isThisTeamBidding = biddingTeamId === team.teamOwnerId;
+            const anyBidInFlight = biddingTeamId !== null;
+            const canBid =
+              Boolean(liveLot) &&
+              !isLeading &&
+              canAfford &&
+              hasRemainingSlots &&
+              secondsRemaining !== 0 &&
+              !anyBidInFlight &&
+              !busy &&
+              !isAuctionPaused &&
+              liveLot?.status === 'IN_PROGRESS';
+
+            return (
+              <div
+                key={team.teamOwnerId}
+                className={`flex flex-col justify-between rounded-xl border p-2.5 transition-colors ${
+                  isLeading
+                    ? 'border-emerald-500/50 bg-emerald-950/25 ring-1 ring-emerald-500/30'
+                    : 'border-slate-800 bg-slate-900/60'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="truncate text-xs font-bold text-white" title={team.teamName}>
+                      {team.teamName}
+                    </span>
+                    {isLeading && (
+                      <span className="shrink-0 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-300">
+                        LEADING
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-2 space-y-1 text-[11px] text-slate-400">
+                    <div className="flex justify-between">
+                      <span>Kitty:</span>
+                      <b className="text-slate-200 font-mono">₹{money(team.remainingKitty)}</b>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Spent:</span>
+                      <b className="text-slate-200 font-mono">₹{money(team.kittyUsed)}</b>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Bought:</span>
+                      <b className="text-slate-200">
+                        {team.playersBought} <span className="text-[10px] text-slate-500">(left {team.playersRemaining})</span>
+                      </b>
+                    </div>
+                    <div className="flex justify-between border-t border-slate-800/80 pt-1">
+                      <span>Max Bid:</span>
+                      <b className="text-amber-300 font-mono">₹{money(team.maximumAffordableCurrentBid)}</b>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-2.5">
                   <button
-                    key={filter}
-                    onClick={() => setCandidateFilter(filter)}
-                    className={`rounded-lg px-2.5 py-1.5 font-semibold transition-colors ${
-                      candidateFilter === filter
-                        ? 'bg-teal-500 text-white'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    type="button"
+                    disabled={!canBid}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleAdminBid(team.teamOwnerId, nextValidBid);
+                    }}
+                    className={`w-full rounded-lg py-2 text-xs font-black transition-all ${
+                      isThisTeamBidding
+                        ? 'bg-teal-700 text-white cursor-wait'
+                        : isLeading
+                          ? 'cursor-not-allowed border border-emerald-500/30 bg-emerald-900/30 text-emerald-300 opacity-90'
+                          : canBid
+                            ? 'bg-teal-600 text-white shadow hover:bg-teal-500 active:scale-95'
+                            : 'cursor-not-allowed bg-slate-800/80 text-slate-500 opacity-50'
                     }`}
                   >
-                    {filter}
+                    {isThisTeamBidding ? (
+                      <Loader2 className="mx-auto h-4 w-4 animate-spin text-white" />
+                    ) : isLeading ? (
+                      'Current Leader'
+                    ) : !hasRemainingSlots ? (
+                      'Squad Full'
+                    ) : !canAfford ? (
+                      'Cannot Afford'
+                    ) : (
+                      `BID ₹${money(nextValidBid)}`
+                    )}
                   </button>
-                ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* OVERVIEW STATS CHIPS */}
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {[
+          { label: 'Players sold', value: data.overview.playersSold, icon: Users },
+          { label: 'Players unsold', value: data.overview.playersUnsold, icon: Activity },
+          { label: 'Retry pool remaining', value: data.overview.retryPoolRemaining, icon: RefreshCw },
+          { label: 'Total spent', value: `₹${money(data.overview.totalMoneySpent)}`, icon: Coins },
+        ].map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <div key={stat.label} className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{stat.label}</p>
+                <p className="text-base font-black text-white">{stat.value}</p>
+              </div>
+              <Icon className="h-4 w-4 text-teal-400 opacity-80" />
+            </div>
+          );
+        })}
+      </section>
+
+      {/* COLLAPSIBLE ACCORDIONS FOR AUDIT, BUDGETS & SELECTIONS */}
+      <div className="space-y-3 pt-2">
+        {/* Accordion 1: Team Budgets & Auditable Adjustments */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowBudgets((p) => !p)}
+            className="w-full flex items-center justify-between p-3.5 text-left font-bold text-white hover:bg-slate-800/40"
+          >
+            <div className="flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-teal-400" />
+              <span>Team Budgets & Points Adjustment ({data.teams.length})</span>
+            </div>
+            {showBudgets ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+          </button>
+
+          {showBudgets && (
+            <div className="border-t border-slate-800 p-3 sm:p-4 space-y-3">
+              {data.teams.map((team) => (
+                <article key={team.teamOwnerId} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="font-bold text-white text-sm">{team.teamName}</h3>
+                      <p className="text-xs text-slate-500">{team.ownerName}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-slate-400">
+                        {team.playersBought}/{data.auction.configuration.totalPlayersToBuy} bought
+                      </span>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          setAdjustingTeam({
+                            id: team.teamOwnerId,
+                            name: team.teamName,
+                            current: team.remainingKitty,
+                          });
+                          setAdjustmentAmount(5000);
+                          setAdjustmentReason('');
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-semibold text-teal-300 hover:border-teal-500/50 disabled:opacity-50"
+                      >
+                        <Sliders className="h-3 w-3" /> Adjust Points
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-400"
+                      style={{ width: `${Math.max(0, Math.min(100, team.budgetUsedPercent))}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-4">
+                    <p className="text-slate-400">Remaining <b className="block text-white">₹{money(team.remainingKitty)}</b></p>
+                    <p className="text-slate-400">Spent <b className="block text-white">₹{money(team.kittyUsed)}</b></p>
+                    <p className="text-slate-400">Players left <b className="block text-white">{team.playersRemaining}</b></p>
+                    <p className="text-slate-400">Max bid <b className="block text-amber-200">₹{money(team.maximumAffordableCurrentBid)}</b></p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Accordion 2: Player Pool & Selections */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowSelections((p) => !p)}
+            className="w-full flex items-center justify-between p-3.5 text-left font-bold text-white hover:bg-slate-800/40"
+          >
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-teal-400" />
+              <span>Player Pool & Selections ({data.selections.length})</span>
+            </div>
+            {showSelections ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+          </button>
+
+          {showSelections && (
+            <div className="border-t border-slate-800 p-3 sm:p-4 space-y-3">
+              {/* Search and Filters */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search player name or role..."
+                    value={playerSearch}
+                    onChange={(e) => setPlayerSearch(e.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 py-1.5 pl-9 pr-3 text-xs text-white placeholder-slate-500 focus:border-teal-500 focus:outline-none"
+                  />
+                </div>
+                <div className="flex items-center gap-1 text-xs">
+                  <Filter className="h-3.5 w-3.5 text-slate-400 mr-1" />
+                  {(['ALL', 'PLAYER', 'OWNER', 'ICON'] as const).map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => setCandidateFilter(filter)}
+                      className={`rounded-lg px-2.5 py-1 font-semibold transition-colors ${
+                        candidateFilter === filter
+                          ? 'bg-teal-500 text-white'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      {filter}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto max-h-80">
+                <table className="w-full min-w-[540px] text-left text-xs">
+                  <thead className="text-[10px] uppercase tracking-wide text-slate-500 sticky top-0 bg-slate-900">
+                    <tr>
+                      <th className="pb-2 pr-3">Player</th>
+                      <th className="pb-2 pr-3">Type / role</th>
+                      <th className="pb-2 pr-3">Selection</th>
+                      <th className="pb-2 pr-3">Lot status</th>
+                      <th className="pb-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {filteredSelections.map((selection) => {
+                      const lot = data.lots.find(
+                        (candidate) => candidate.registrationId === selection.registrationId
+                      );
+                      const isIcon = selection.candidateType === 'ICON';
+                      const nextStatus = selection.selectionStatus === 'SELECTED' ? 'EXCLUDED' : 'SELECTED';
+                      return (
+                        <tr key={selection.id}>
+                          <td className="py-2.5 pr-3 font-semibold text-white">{selection.playerName}</td>
+                          <td className="py-2.5 pr-3 text-slate-400">
+                            {selection.candidateType} · {selection.role || '—'}
+                          </td>
+                          <td className="py-2.5 pr-3">
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              selection.selectionStatus === 'SELECTED'
+                                ? 'bg-emerald-400/10 text-emerald-300'
+                                : selection.selectionStatus === 'LOCKED'
+                                  ? 'bg-amber-400/10 text-amber-200'
+                                  : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {selection.selectionStatus}
+                            </span>
+                          </td>
+                          <td className="py-2.5 pr-3 text-slate-400">
+                            {lot ? `#${lot.lotNumber} ${lot.status}` : 'Not in pool'}
+                          </td>
+                          <td className="py-2.5">
+                            {!isIcon && canEditSelection && (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => void postAction(
+                                  `/api/admin/auctions/${auctionId}/selections`,
+                                  {
+                                    registrationId: selection.registrationId,
+                                    selectionStatus: nextStatus,
+                                    reason: nextStatus === 'EXCLUDED' ? 'Excluded by auction manager' : null,
+                                  },
+                                  'PATCH'
+                                )}
+                                className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:border-teal-500/50 disabled:opacity-50"
+                              >
+                                {nextStatus === 'SELECTED' ? 'Include' : 'Exclude'}
+                              </button>
+                            )}
+                            {isIcon && <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-200"><Shield className="h-3 w-3" /> Protected</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!filteredSelections.length && (
+                      <tr><td colSpan={5} className="py-4 text-center text-xs text-slate-500">No matching candidates found.</td></tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
+          )}
+        </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] text-left text-sm">
-                <thead className="text-[11px] uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="pb-3 pr-3">Player</th>
-                    <th className="pb-3 pr-3">Type / role</th>
-                    <th className="pb-3 pr-3">Selection</th>
-                    <th className="pb-3 pr-3">Lot status</th>
-                    <th className="pb-3">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {filteredSelections.map((selection) => {
-                    const lot = data.lots.find(
-                      (candidate) => candidate.registrationId === selection.registrationId
-                    );
-                    const isIcon = selection.candidateType === 'ICON';
-                    const nextStatus = selection.selectionStatus === 'SELECTED' ? 'EXCLUDED' : 'SELECTED';
-                    return (
-                      <tr key={selection.id}>
-                        <td className="py-3 pr-3 font-semibold text-white">{selection.playerName}</td>
-                        <td className="py-3 pr-3 text-xs text-slate-400">
-                          {selection.candidateType} · {selection.role || '—'}
-                        </td>
-                        <td className="py-3 pr-3">
-                          <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${
-                            selection.selectionStatus === 'SELECTED'
-                              ? 'bg-emerald-400/10 text-emerald-300'
-                              : selection.selectionStatus === 'LOCKED'
-                                ? 'bg-amber-400/10 text-amber-200'
-                                : 'bg-slate-800 text-slate-400'
-                          }`}>
-                            {selection.selectionStatus}
-                          </span>
-                        </td>
-                        <td className="py-3 pr-3 text-xs text-slate-400">
-                          {lot ? `#${lot.lotNumber} ${lot.status}` : 'Not in pool'}
-                        </td>
-                        <td className="py-3">
-                          {!isIcon && canEditSelection && (
-                            <button
-                              disabled={busy}
-                              onClick={() => void postAction(
-                                `/api/admin/auctions/${auctionId}/selections`,
-                                {
-                                  registrationId: selection.registrationId,
-                                  selectionStatus: nextStatus,
-                                  reason: nextStatus === 'EXCLUDED' ? 'Excluded by auction manager' : null,
-                                },
-                                'PATCH'
-                              )}
-                              className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-200 hover:border-teal-500/50 disabled:opacity-50"
-                            >
-                              {nextStatus === 'SELECTED' ? 'Include' : 'Exclude'}
-                            </button>
-                          )}
-                          {isIcon && <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-200"><Shield className="h-3 w-3" /> Protected</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {!filteredSelections.length && (
-                    <tr><td colSpan={5} className="py-6 text-center text-sm text-slate-500">No auction candidates found.</td></tr>
-                  )}
-                </tbody>
-              </table>
+        {/* Accordion 3: Audit Trail & Bid History */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowAuditTrail((p) => !p)}
+            className="w-full flex items-center justify-between p-3.5 text-left font-bold text-white hover:bg-slate-800/40"
+          >
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-teal-400" />
+              <span>Auction Event History & Audit Trail</span>
             </div>
-          </section>
+            {showAuditTrail ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+          </button>
 
-          {/* Auction Events History */}
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-6">
-            <h2 className="mb-4 text-lg font-bold text-white">Auction event history & Audit trail</h2>
-            <div className="max-h-72 space-y-2 overflow-y-auto">
+          {showAuditTrail && (
+            <div className="border-t border-slate-800 p-3 sm:p-4 space-y-2 max-h-80 overflow-y-auto">
               {data.events.map((event) => (
-                <article key={event.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg bg-slate-950/50 px-3 py-2.5">
+                <article key={event.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg bg-slate-950/50 px-3 py-2">
                   <div>
                     <p className="text-xs font-bold text-slate-200">{event.eventType.replaceAll('_', ' ')}</p>
                     <p className="text-[11px] text-slate-500">
@@ -1054,115 +1319,16 @@ export default function AuctionControlPanelPage() {
                     </p>
                   </div>
                   <div className="text-right">
-                    {event.amount !== null && <p className="text-xs font-bold text-white">₹{money(event.amount)}</p>}
-                    <time className="text-[10px] text-slate-500">{new Date(event.createdAt).toLocaleString()}</time>
+                    {event.amount !== null && <p className="text-xs font-bold text-white font-mono">₹{money(event.amount)}</p>}
+                    <time className="text-[10px] text-slate-500">{new Date(event.createdAt).toLocaleTimeString()}</time>
                   </div>
                 </article>
               ))}
-              {!data.events.length && <p className="text-sm text-slate-500">No auction events recorded.</p>}
+              {!data.events.length && <p className="text-xs text-slate-500">No auction events recorded.</p>}
             </div>
-          </section>
+          )}
         </div>
-
-        {/* Aside: Configuration and Rounds */}
-        <aside className="space-y-6">
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-white">Auction configuration</h2>
-                <p className="mt-1 text-xs text-slate-400">Updates use the validated configuration RPC.</p>
-              </div>
-              <Coins className="h-5 w-5 text-teal-400" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {configInputs.map(({ field, label }) => (
-                <label key={field} className="text-xs font-medium text-slate-400">
-                  {label}
-                  <input
-                    type="number"
-                    min={field === 'bidTimerSeconds' ? 1 : 0}
-                    value={currentConfig[field]}
-                    disabled={data.auction.configurationLocked || busy}
-                    onChange={(event) => setConfigurationField(field, Number(event.target.value))}
-                    className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-teal-500 disabled:opacity-50"
-                  />
-                </label>
-              ))}
-              <label className="text-xs font-medium text-slate-400">
-                Maximum bid (optional)
-                <input
-                  type="number"
-                  min={currentConfig.baseBid}
-                  value={currentConfig.maximumBid ?? ''}
-                  disabled={data.auction.configurationLocked || busy}
-                  onChange={(event) => setConfigurationField(
-                    'maximumBid',
-                    event.target.value === '' ? null : Number(event.target.value)
-                  )}
-                  className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-teal-500 disabled:opacity-50"
-                />
-              </label>
-              <label className="col-span-2 flex items-center justify-between rounded-lg bg-slate-950 px-3 py-3 text-xs font-semibold text-slate-300">
-                Allow owner self-purchase
-                <input
-                  type="checkbox"
-                  checked={currentConfig.allowOwnerSelfPurchase}
-                  disabled={data.auction.configurationLocked || busy}
-                  onChange={(event) => setConfigurationField('allowOwnerSelfPurchase', event.target.checked)}
-                  className="h-4 w-4 accent-teal-500"
-                />
-              </label>
-              <div className="col-span-2 rounded-lg bg-slate-950 px-3 py-3 text-xs text-slate-400">
-                Icon players allocated before auction: <b className="text-white">{currentConfig.iconPlayersAllocated}</b>
-              </div>
-            </div>
-            {data.auction.configurationLocked ? (
-              <p className="mt-3 text-xs text-amber-200">Configuration is locked by the auction state or existing financial records.</p>
-            ) : (
-              <button
-                disabled={busy}
-                onClick={() => void saveConfiguration()}
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-teal-500 disabled:opacity-50"
-              >
-                <Save className="h-4 w-4" /> Save configuration
-              </button>
-            )}
-            {isAuctionActive && !liveLot && (
-              <button
-                disabled={busy}
-                onClick={confirmEndAuction}
-                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-rose-500/30 px-4 py-2.5 text-sm font-bold text-rose-200 hover:bg-rose-950/40 disabled:opacity-50"
-              >
-                <Square className="h-4 w-4" /> End auction
-              </button>
-            )}
-          </section>
-
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-5">
-            <h2 className="mb-4 text-lg font-bold text-white">Rounds and retry pool</h2>
-            <div className="space-y-2">
-              {data.rounds.map((round) => (
-                <div key={round.id} className="rounded-xl bg-slate-950/60 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-bold text-white">
-                      Round {round.roundNumber}
-                      {round.roundType === 'UNSOLD_RETRY' ? ' · Retry' : ''}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase text-slate-400">{round.status}</span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
-                    <span>{round.players} lots</span>
-                    <span>{round.sold} sold</span>
-                    <span>{round.unsold} unsold</span>
-                    <span>{round.available} available</span>
-                  </div>
-                </div>
-              ))}
-              {!data.rounds.length && <p className="text-sm text-slate-500">No auction rounds yet.</p>}
-            </div>
-          </section>
-        </aside>
-      </section>
+      </div>
 
       {/* Financial Adjustment Modal */}
       {adjustingTeam && (
@@ -1171,6 +1337,7 @@ export default function AuctionControlPanelPage() {
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">Adjust Team Budget</h3>
               <button
+                type="button"
                 onClick={() => setAdjustingTeam(null)}
                 className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
               >
@@ -1186,17 +1353,17 @@ export default function AuctionControlPanelPage() {
               <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-950 p-3 text-center text-xs">
                 <div>
                   <span className="text-slate-400">Before</span>
-                  <p className="mt-1 font-bold text-white">₹{money(adjustingTeam.current)}</p>
+                  <p className="mt-1 font-bold text-white font-mono">₹{money(adjustingTeam.current)}</p>
                 </div>
                 <div>
                   <span className="text-slate-400">Adjustment</span>
-                  <p className={`mt-1 font-bold ${adjustmentAmount >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  <p className={`mt-1 font-bold font-mono ${adjustmentAmount >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                     {adjustmentAmount >= 0 ? `+₹${money(adjustmentAmount)}` : `-₹${money(Math.abs(adjustmentAmount))}`}
                   </p>
                 </div>
                 <div>
                   <span className="text-slate-400">After</span>
-                  <p className="mt-1 font-bold text-teal-300">₹{money(adjustingTeam.current + adjustmentAmount)}</p>
+                  <p className="mt-1 font-bold text-teal-300 font-mono">₹{money(adjustingTeam.current + adjustmentAmount)}</p>
                 </div>
               </div>
 

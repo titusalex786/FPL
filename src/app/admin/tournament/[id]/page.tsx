@@ -190,7 +190,7 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
   };
 
   const handleDeleteRegistration = async (regId: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete registration for "${name}"? This will permanently remove the entry.`)) {
+    if (!window.confirm(`Withdraw or remove registration for "${name}"? If referenced by an auction, it will be safely withdrawn to protect historical records.`)) {
       return;
     }
     setActionLoadingId(regId);
@@ -201,13 +201,13 @@ export default function SingleTournamentAdminPage({ params }: { params: Promise<
       });
       const resData = await res.json();
       if (res.ok) {
-        setActionMessage(resData.message || 'Registration deleted successfully!');
+        setActionMessage(resData.message || 'Registration updated successfully!');
         fetchSummary();
       } else {
-        setActionMessage(`Error: ${resData.error || 'Failed to delete registration'}`);
+        setActionMessage(`Error: ${resData.error || 'Failed to process registration'}`);
       }
     } catch (err) {
-      setActionMessage('Network error deleting registration');
+      setActionMessage('Network error processing registration');
     } finally {
       setActionLoadingId(null);
     }

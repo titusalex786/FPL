@@ -247,10 +247,13 @@ export default function ProjectorLivePage({
   }, [refresh]);
 
   const liveLot = state?.liveLot || null;
+  const isAuctionPaused = state?.auction.status === 'PAUSED';
   const bidDeadline = liveLot?.bidDeadlineAt
     ? new Date(liveLot.bidDeadlineAt).getTime()
     : null;
-  const secondsRemaining = bidDeadline
+  const secondsRemaining = isAuctionPaused && (liveLot as any)?.pausedRemainingSeconds != null
+    ? (liveLot as any).pausedRemainingSeconds
+    : bidDeadline
     ? Math.max(0, Math.ceil((bidDeadline - now) / 1000))
     : null;
   const totalSeconds = state?.auction.bidTimerSeconds ?? 30;
@@ -474,6 +477,11 @@ export default function ProjectorLivePage({
                 secondsRemaining={secondsRemaining}
                 totalSeconds={totalSeconds}
               />
+              {isAuctionPaused && (
+                <span className="mt-3 rounded-full border border-amber-500/40 bg-amber-500/20 px-3 py-1 text-xs font-black uppercase tracking-wider text-amber-300 animate-pulse">
+                  ⏸ Paused
+                </span>
+              )}
             </div>
           )}
 

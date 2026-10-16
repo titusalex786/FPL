@@ -53,7 +53,7 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
         .select(`
           id, registration_id, player_id, lot_number, status,
           current_highest_bid, current_highest_team_owner_id,
-          winning_team_owner_id, sold_amount, sold_at, bid_deadline_at,
+          winning_team_owner_id, sold_amount, sold_at, bid_deadline_at, paused_remaining_seconds,
           round_id,
           registration:registrations (
             registered_name_snapshot, registered_role_snapshot,
@@ -189,6 +189,7 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
         soldAmount: lot.sold_amount,
         soldAt: lot.sold_at,
         bidDeadlineAt: lot.bid_deadline_at,
+        pausedRemainingSeconds: (lot as any).paused_remaining_seconds ?? null,
         // Leading team — only team name, team logos explicitly excluded from projector
         currentTeamName:
           liveOwner?.team_name || liveOwner?.owner_name || null,

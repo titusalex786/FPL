@@ -137,7 +137,6 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
           registration:registrations (
             registered_name_snapshot,
             registered_role_snapshot,
-            registered_image_snapshot,
             registered_batting_style_snapshot,
             registered_bowling_style_snapshot,
             registered_jersey_size_snapshot,
@@ -261,7 +260,9 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
           registrationId: p.registration_id,
           playerId: p.player_id,
           name: reg?.registered_name_snapshot || reg?.player?.full_name || 'Player',
-          image: reg?.registered_image_snapshot || reg?.player?.profile_image_url || null,
+          image: p.registration_id
+            ? `/api/registrations/${p.registration_id}/photo`
+            : reg?.player?.profile_image_url || null,
           role: reg?.registered_role_snapshot || reg?.player?.cricket_role || p.player_role || 'ALL_ROUNDER',
           battingStyle: reg?.registered_batting_style_snapshot || reg?.player?.batting_style || null,
           bowlingStyle: reg?.registered_bowling_style_snapshot || reg?.player?.bowling_style || null,
@@ -298,15 +299,9 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
     });
 
     const liveLot = lots.find((lot) => lot.status === 'LIVE') || null;
-    let liveLotImage: string | null = null;
-    if (liveLot?.registration_id) {
-      const { data: regImage } = await supabase
-        .from('registrations')
-        .select('registered_image_snapshot')
-        .eq('id', liveLot.registration_id)
-        .maybeSingle();
-      liveLotImage = regImage?.registered_image_snapshot || null;
-    }
+    const liveLotImage: string | null = liveLot?.registration_id
+      ? `/api/registrations/${liveLot.registration_id}/photo`
+      : null;
 
     let bidHistory: Array<{
       id: string;

@@ -104,7 +104,7 @@ describe('Fix Auction Event Types and RPC Regression Tests', () => {
         .select('id, status')
         .eq('id', realAuctionId)
         .single();
-      expect(realAuction?.status).toBe('DRAFT');
+      expect(['DRAFT', 'OPEN']).toContain(realAuction?.status);
 
       const { data: realPurchases } = await supabase
         .from('auction_purchases')

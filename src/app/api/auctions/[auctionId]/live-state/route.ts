@@ -137,24 +137,6 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
       ...recentlySold,
     ].filter((lot): lot is NonNullable<typeof lot> => lot !== null);
 
-    const displayedRegIds = [
-      ...new Set(
-        displayedLots
-          .map((lot) => lot.registration_id)
-          .filter((id): id is string => typeof id === 'string')
-      ),
-    ];
-    const { data: regImages, error: regImagesError } = displayedRegIds.length > 0
-      ? await supabase
-          .from('registrations')
-          .select('id, registered_image_snapshot')
-          .in('id', displayedRegIds)
-      : { data: [], error: null };
-    if (regImagesError) throw regImagesError;
-    const imageByRegId = new Map(
-      (regImages || []).map((img) => [img.id, img.registered_image_snapshot])
-    );
-
     const missingPlayerIds = [
       ...new Set(
         displayedLots
@@ -192,11 +174,10 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
         ? ownerById.get(lot.winning_team_owner_id)
         : null;
 
-      const playerImage =
-        (lot.registration_id ? imageByRegId.get(lot.registration_id) : null) ||
-        (reg as { registered_image_snapshot?: string } | null)?.registered_image_snapshot ||
-        (fallbackPlayer as { profile_image_url?: string } | null)?.profile_image_url ||
-        null;
+      const playerImage = lot.registration_id
+        ? `/api/registrations/${lot.registration_id}/photo`
+        : (fallbackPlayer as { profile_image_url?: string } | null)?.profile_image_url ||
+          null;
 
       return {
         id: lot.id,

@@ -38,7 +38,14 @@ export async function POST(_request: NextRequest, { params }: RouteContext) {
 
     return NextResponse.json({ success: true, status: 'OPEN' });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Internal Server Error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error('[Admin Open Auction Error]:', error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error !== null && 'message' in error
+          ? String((error as { message: unknown }).message)
+          : 'Unable to open auction';
+    const status = message.includes('Unauthorized') ? 403 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

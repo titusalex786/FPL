@@ -9,10 +9,16 @@ type RouteContext = {
 };
 
 function errorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : 'Internal Server Error';
+  console.error('[Admin Auction Lot Action Error]:', error);
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error !== null && 'message' in error
+        ? String((error as { message: unknown }).message)
+        : 'The auction action could not be completed.';
   const code =
     typeof error === 'object' && error !== null && 'code' in error
-      ? error.code
+      ? (error as { code?: string }).code
       : undefined;
   const status = message.includes('Unauthorized') || code === '42501'
     ? 403

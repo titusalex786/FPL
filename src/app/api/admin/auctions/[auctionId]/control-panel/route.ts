@@ -100,15 +100,10 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
           id, registration_id, player_id, lot_number, status, round_id,
           current_highest_bid, current_highest_team_owner_id,
           winning_team_owner_id, sold_amount, sold_at, bid_deadline_at,
-          round:auction_rounds (round_number, round_type, status),
-          player:players (
-            id, full_name, profile_image_url, cricket_role,
-            batting_style, jersey_size
-          ),
           registration:registrations (
             registered_name_snapshot, registered_role_snapshot,
             registered_batting_style_snapshot, registered_bowling_style_snapshot,
-            registered_jersey_size_snapshot, registered_image_snapshot
+            registered_jersey_size_snapshot
           )
         `)
         .eq('auction_id', auctionId)
@@ -122,7 +117,7 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
         .from('auction_player_selections')
         .select(`
           id, registration_id, player_id, candidate_type, selection_status,
-          reason, player:players (id, full_name, cricket_role),
+          reason,
           registration:registrations (registered_name_snapshot, registered_role_snapshot)
         `)
         .eq('auction_id', auctionId)
@@ -159,6 +154,28 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
     const selections = selectionsResult.data || [];
     const purchases = purchasesResult.data || [];
     const events = eventsResult.data || [];
+    const roundById = new Map(rounds.map((round) => [round.id, round]));
+
+    const missingPlayerIds = [
+      ...new Set([
+        ...lots
+          .filter((lot) => !lot.registration && lot.player_id)
+          .map((lot) => lot.player_id),
+        ...selections
+          .filter((selection) => !selection.registration && selection.player_id)
+          .map((selection) => selection.player_id),
+      ].filter((id): id is string => typeof id === 'string')),
+    ];
+
+    const { data: fallbackPlayers, error: fallbackPlayersError } = missingPlayerIds.length > 0
+      ? await supabase
+          .from('players')
+          .select('id, full_name, profile_image_url, cricket_role, batting_style, jersey_size')
+          .in('id', missingPlayerIds)
+      : { data: [], error: null };
+    if (fallbackPlayersError) throw fallbackPlayersError;
+    const playerById = new Map((fallbackPlayers || []).map((p) => [p.id, p]));
+
     const ownerIds = [
       ...new Set([
         ...budgets.map((budget) => budget.team_owner_id),
@@ -216,6 +233,16 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
     });
 
     const liveLot = lots.find((lot) => lot.status === 'LIVE') || null;
+    let liveLotImage: string | null = null;
+    if (liveLot?.registration_id) {
+      const { data: regImage } = await supabase
+        .from('registrations')
+        .select('registered_image_snapshot')
+        .eq('id', liveLot.registration_id)
+        .maybeSingle();
+      liveLotImage = regImage?.registered_image_snapshot || null;
+    }
+
     let bidHistory: Array<{
       id: string;
       teamName: string;
@@ -265,7 +292,7 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
       roundSummaries[roundSummaries.length - 1] ||
       null;
     const retryPoolRemaining = lots.filter((lot) => {
-      const round = (lot.round as { round_type?: string } | null) || null;
+      const round = roundById.get(lot.round_id);
       return round?.round_type === 'UNSOLD_RETRY' && lot.status === 'AVAILABLE';
     }).length;
     const totalMoneySpent = purchases.reduce(
@@ -319,11 +346,11 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
           const winningOwner = lot.winning_team_owner_id
             ? ownerById.get(lot.winning_team_owner_id)
             : null;
-          const player = Array.isArray(lot.player) ? lot.player[0] : lot.player;
           const registration = Array.isArray(lot.registration)
             ? lot.registration[0]
             : lot.registration;
-          const round = Array.isArray(lot.round) ? lot.round[0] : lot.round;
+          const fallbackPlayer = lot.player_id ? playerById.get(lot.player_id) : null;
+          const round = roundById.get(lot.round_id);
           return {
             id: lot.id,
             registrationId: lot.registration_id,
@@ -340,25 +367,30 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
             soldAmount: lot.sold_amount,
             soldAt: lot.sold_at,
             bidDeadlineAt: lot.bid_deadline_at,
-            player: (player || registration)
+            player: (registration || fallbackPlayer || lot.player_id)
               ? {
-                  id: player?.id || lot.player_id,
-                  name: registration?.registered_name_snapshot || player?.full_name || 'Player',
+                  id: fallbackPlayer?.id || lot.player_id,
+                  name:
+                    registration?.registered_name_snapshot ||
+                    fallbackPlayer?.full_name ||
+                    'Player',
                   image:
                     lot.status === 'LIVE'
-                      ? registration?.registered_image_snapshot ||
-                        player?.profile_image_url ||
-                        null
+                      ? liveLotImage || fallbackPlayer?.profile_image_url || null
                       : null,
-                  role: registration?.registered_role_snapshot || player?.cricket_role || null,
+                  role:
+                    registration?.registered_role_snapshot ||
+                    fallbackPlayer?.cricket_role ||
+                    null,
                   battingStyle:
                     registration?.registered_batting_style_snapshot ||
-                    player?.batting_style ||
+                    fallbackPlayer?.batting_style ||
                     null,
-                  bowlingStyle: registration?.registered_bowling_style_snapshot || null,
+                  bowlingStyle:
+                    registration?.registered_bowling_style_snapshot || null,
                   jerseySize:
                     registration?.registered_jersey_size_snapshot ||
-                    player?.jersey_size ||
+                    fallbackPlayer?.jersey_size ||
                     null,
                 }
               : null,
@@ -366,12 +398,12 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
         }),
         rounds: roundSummaries,
         selections: selections.map((selection) => {
-          const player = Array.isArray(selection.player)
-            ? selection.player[0]
-            : selection.player;
           const registration = Array.isArray(selection.registration)
             ? selection.registration[0]
             : selection.registration;
+          const fallbackPlayer = selection.player_id
+            ? playerById.get(selection.player_id)
+            : null;
           return {
             id: selection.id,
             registrationId: selection.registration_id,
@@ -381,11 +413,11 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
             reason: selection.reason,
             playerName:
               registration?.registered_name_snapshot ||
-              player?.full_name ||
+              fallbackPlayer?.full_name ||
               'Player',
             role:
               registration?.registered_role_snapshot ||
-              player?.cricket_role ||
+              fallbackPlayer?.cricket_role ||
               null,
           };
         }),

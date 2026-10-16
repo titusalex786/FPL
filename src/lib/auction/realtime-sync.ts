@@ -97,7 +97,7 @@ function handleDatabaseEvent(
   payload: AuctionRealtimePayload
 ) {
   if (
-    (payload.table !== 'auctions' && payload.table !== 'auction_lots') ||
+    (payload.table !== 'auctions' && payload.table !== 'auction_lots' && payload.table !== 'auction_events') ||
     !isForAuction(payload, auctionId)
   ) {
     return;
@@ -138,6 +138,13 @@ function createEntry(
   entry.channel = client
     .channel(`auction-sync:${auctionId}`)
     .on(
+      'broadcast',
+      { event: 'AUCTION_STATE_CHANGED' },
+      () => {
+        requestAuthoritativeRefresh(entry);
+      }
+    )
+    .on(
       'postgres_changes',
       {
         event: 'UPDATE',
@@ -163,6 +170,16 @@ function createEntry(
         event: 'UPDATE',
         schema: 'public',
         table: 'auction_lots',
+        filter: `auction_id=eq.${auctionId}`,
+      },
+      onChange
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'auction_events',
         filter: `auction_id=eq.${auctionId}`,
       },
       onChange

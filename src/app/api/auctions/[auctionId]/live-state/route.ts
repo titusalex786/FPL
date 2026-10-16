@@ -29,6 +29,25 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
   try {
     const supabase = createAdminClient();
 
+    // Fast path: high-performance single-query RPC (<150ms)
+    if (typeof (supabase as any).rpc === 'function') {
+      try {
+        const { data: fastState, error: rpcError } = await supabase.rpc(
+          'get_auction_live_state_v1',
+          { p_auction_id: auctionId }
+        );
+        if (!rpcError && fastState) {
+          return NextResponse.json(fastState, {
+            headers: {
+              'Cache-Control': 'private, no-store',
+            },
+          });
+        }
+      } catch {
+        // Fall back to multi-query path
+      }
+    }
+
     const { data: auction, error: auctionError } = await supabase
       .from('auctions')
       .select(

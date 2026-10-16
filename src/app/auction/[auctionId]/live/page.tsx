@@ -234,7 +234,7 @@ export default function ProjectorLivePage({
     }
   }, [auctionId]);
 
-  const rtStatus = useAuctionRealtime(auctionId, refresh, 8000);
+  const rtStatus = useAuctionRealtime(auctionId, refresh, 1500);
 
   useEffect(() => {
     setConnectionStatus(rtStatus as typeof connectionStatus);

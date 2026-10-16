@@ -129,6 +129,22 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     if (error) return responseForBidError(error);
 
+    // Non-blocking realtime broadcast for instant projector sync
+    if (typeof (supabase as any).channel === 'function') {
+      try {
+        const syncChannel = supabase.channel(`auction-sync:${auctionId}`);
+        syncChannel
+          .send({
+            type: 'broadcast',
+            event: 'AUCTION_STATE_CHANGED',
+            payload: { lotId, teamOwnerId, bidAmount },
+          })
+          .catch(() => {});
+      } catch {
+        // Non-blocking
+      }
+    }
+
     return NextResponse.json({ success: true, lot });
   } catch (error: any) {
     const status = error.message?.includes('Unauthorized') ? 403 : 500;

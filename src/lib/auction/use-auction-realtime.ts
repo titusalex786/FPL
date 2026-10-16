@@ -14,7 +14,7 @@ export type AuctionConnectionStatus =
 export function useAuctionRealtime(
   auctionId: string,
   refresh: () => void | Promise<unknown>,
-  fallbackIntervalMs = 10000
+  fallbackIntervalMs = 2000
 ) {
   const [status, setStatus] = useState<AuctionConnectionStatus>(
     typeof navigator !== 'undefined' && !navigator.onLine
@@ -60,7 +60,7 @@ export function useAuctionRealtime(
   }, [auctionId]);
 
   useEffect(() => {
-    if (status === 'LIVE') return;
+    // Continuous heartbeat polling guarantees updates even if websocket events are delayed/dropped
     const poll = () => {
       if (
         document.visibilityState === 'visible' &&
@@ -72,7 +72,7 @@ export function useAuctionRealtime(
     };
     const timer = window.setInterval(poll, fallbackIntervalMs);
     return () => window.clearInterval(timer);
-  }, [fallbackIntervalMs, status]);
+  }, [fallbackIntervalMs]);
 
   return status;
 }

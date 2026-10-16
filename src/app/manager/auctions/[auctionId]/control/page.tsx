@@ -278,7 +278,35 @@ export default function AuctionControlPanelPage() {
         throw new Error(getErrorMessage(payload, 'Unable to load auction control data.'));
       }
       const panel = payload as ControlPanelData;
-      setData(panel);
+      setData((current) => {
+        if (!current) return panel;
+        // Monotonic bid protection: never allow an older server response to roll back a higher live bid
+        const currentLive = current.lots.find((l) => l.id === current.liveLotId);
+        const incomingLive = panel.lots.find((l) => l.id === panel.liveLotId);
+        if (
+          currentLive &&
+          incomingLive &&
+          currentLive.id === incomingLive.id &&
+          (currentLive.currentBid ?? 0) > (incomingLive.currentBid ?? 0)
+        ) {
+          const patchedLots = panel.lots.map((l) =>
+            l.id === currentLive.id
+              ? {
+                  ...l,
+                  currentBid: currentLive.currentBid,
+                  currentTeamOwnerId: currentLive.currentTeamOwnerId,
+                  currentTeamName: currentLive.currentTeamName,
+                  bidDeadlineAt: null,
+                }
+              : l
+          );
+          return {
+            ...panel,
+            lots: patchedLots,
+          };
+        }
+        return panel;
+      });
       setConfiguration(panel.auction.configuration);
       setError(null);
     } catch (cause) {
@@ -482,8 +510,8 @@ export default function AuctionControlPanelPage() {
       setNotice(`Bid of ₹${amount.toLocaleString('en-IN')} placed for ${biddingTeam?.teamName || 'team'}!`);
       // 2. Unblock bidding state immediately so the manager can click next team right away!
       setBiddingTeamId(null);
-      // 3. Trigger background non-blocking refresh to keep events/rosters synchronized
-      void refresh(false);
+      // NOTE: Do NOT call heavy refresh() here. Local state is already optimistically updated
+      // and consistent. Firing a 5-second fetch here would stall consecutive bids and risk out-of-order state overwrites.
     } catch (cause) {
       setBiddingTeamId(null);
       setError(cause instanceof Error ? cause.message : 'Unable to place bid.');

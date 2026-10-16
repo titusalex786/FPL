@@ -23,6 +23,10 @@ import { NextRequest } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
+vi.mock('next/cache', () => ({
+  unstable_cache: (callback: (...args: never[]) => unknown) => callback,
+}));
+
 // ---------------------------------------------------------------------------
 // Shared mock values
 // ---------------------------------------------------------------------------

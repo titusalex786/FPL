@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/client';
 import { User, Upload, Save, CheckCircle2, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import { CricketRole, BattingStyle, JerseySize } from '@/types';
 import { computeDerivedRegistrationStatus } from '@/lib/utils/derived-status';
+import { JERSEY_SIZE_OPTIONS, toNumericJerseySize } from '@/lib/utils/jersey-size';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function ProfilePage() {
   const [profileImageUrl, setProfileImageUrl] = useState('');
   const [cricketRole, setCricketRole] = useState<CricketRole>('BATSMAN');
   const [battingStyle, setBattingStyle] = useState<BattingStyle>('RIGHT_HAND');
-  const [jerseySize, setJerseySize] = useState<JerseySize>('M');
+  const [jerseySize, setJerseySize] = useState<JerseySize>('40');
 
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -53,7 +54,7 @@ export default function ProfilePage() {
             setProfileImageUrl(data.player.profile_image_url || '');
             setCricketRole(data.player.cricket_role || 'BATSMAN');
             setBattingStyle(data.player.batting_style || 'RIGHT_HAND');
-            setJerseySize(data.player.jersey_size || 'M');
+            setJerseySize(toNumericJerseySize(data.player.jersey_size));
           } else {
             setFullName(defaultName);
           }
@@ -243,14 +244,7 @@ export default function ProfilePage() {
               required
               value={jerseySize}
               onChange={(e) => setJerseySize(e.target.value as JerseySize)}
-              options={[
-                { value: 'S', label: 'Small (S - 38")' },
-                { value: 'M', label: 'Medium (M - 40")' },
-                { value: 'L', label: 'Large (L - 42")' },
-                { value: 'XL', label: 'X-Large (XL - 44")' },
-                { value: 'XXL', label: 'XX-Large (XXL - 46")' },
-                { value: '3XL', label: '3X-Large (3XL - 48")' },
-              ]}
+              options={JERSEY_SIZE_OPTIONS}
             />
 
             <div className="pt-4 border-t border-slate-800 flex justify-end">

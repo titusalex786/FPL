@@ -186,12 +186,14 @@ export async function GET() {
         tournamentsById.get(auction.tournament_id) ||
         (auction.tournaments as { name?: string } | null)?.name ||
         'Tournament';
+      const isPractice = Boolean(auction.auction_name?.startsWith('[PRACTICE]'));
       return {
         id: auction.id,
         auctionName: auction.auction_name,
         tournamentId: auction.tournament_id,
         tournamentName,
         status: auction.status,
+        isPractice,
         startingKitty: auction.starting_kitty ?? 180000,
         requiredPlayersToBuy: auction.required_players_to_buy ?? 9,
         teamsCount: stats.teamsCount,
@@ -306,6 +308,7 @@ export async function POST(request: NextRequest) {
     'bidTimerSeconds',
     'maximumBid',
     'allowOwnerSelfPurchase',
+    'isPractice',
   ]);
   if (Object.keys(body).some((key) => !allowedFields.has(key))) {
     return NextResponse.json(
@@ -331,7 +334,9 @@ export async function POST(request: NextRequest) {
       body.maximumBid !== null &&
       typeof body.maximumBid !== 'number') ||
     ('allowOwnerSelfPurchase' in body &&
-      typeof body.allowOwnerSelfPurchase !== 'boolean')
+      typeof body.allowOwnerSelfPurchase !== 'boolean') ||
+    ('isPractice' in body &&
+      typeof body.isPractice !== 'boolean')
   ) {
     return NextResponse.json(
       { error: 'Auction configuration is invalid.' },
@@ -339,9 +344,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const isPractice = Boolean(body.isPractice);
+  let rawAuctionName = typeof body.auctionName === 'string' ? body.auctionName.trim() : '';
+  if (isPractice && !rawAuctionName.startsWith('[PRACTICE]')) {
+    rawAuctionName = `[PRACTICE] ${rawAuctionName || 'Practice Auction'}`;
+  }
+
   const payload: ProvisioningBody = {
     tournamentId: typeof body.tournamentId === 'string' ? body.tournamentId : '',
-    auctionName: typeof body.auctionName === 'string' ? body.auctionName.trim() : '',
+    auctionName: rawAuctionName,
     startingKitty: typeof body.startingKitty === 'number' ? body.startingKitty : DEFAULTS.startingKitty,
     requiredPlayersToBuy:
       typeof body.requiredPlayersToBuy === 'number'
@@ -417,7 +428,44 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) return rpcErrorResponse(error);
-    return NextResponse.json({ provisioning: data }, { status: 201 });
+
+    const client = createAdminClient();
+    if (isPractice && data?.auction_id) {
+      const { data: allOwners } = await client
+        .from('team_owners')
+        .select('id')
+        .eq('tournament_id', payload.tournamentId);
+
+      const { data: existingBudgets } = await client
+        .from('auction_team_budgets')
+        .select('team_owner_id')
+        .eq('auction_id', data.auction_id);
+
+      const existingOwnerIds = new Set((existingBudgets || []).map((b) => b.team_owner_id));
+      const missingOwners = (allOwners || []).filter((o) => !existingOwnerIds.has(o.id));
+
+      if (missingOwners.length > 0) {
+        await client.from('auction_team_budgets').insert(
+          missingOwners.map((o) => ({
+            auction_id: data.auction_id,
+            tournament_id: payload.tournamentId,
+            team_owner_id: o.id,
+            starting_kitty: payload.startingKitty,
+            remaining_kitty: payload.startingKitty,
+            players_bought: 0,
+            players_remaining: payload.requiredPlayersToBuy,
+            status: 'ACTIVE',
+          }))
+        );
+      }
+    }
+
+    return NextResponse.json({
+      provisioning: {
+        ...data,
+        isPractice,
+      },
+    }, { status: 201 });
   } catch (error) {
     return rpcErrorResponse(error);
   }

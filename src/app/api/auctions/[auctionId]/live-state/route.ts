@@ -61,7 +61,8 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
           ),
           registration:registrations (
             registered_name_snapshot, registered_role_snapshot,
-            registered_batting_style_snapshot
+            registered_batting_style_snapshot, registered_bowling_style_snapshot,
+            registered_image_snapshot
           )
         `)
         .eq('auction_id', auctionId)
@@ -139,29 +140,35 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
         soldAmount: lot.sold_amount,
         soldAt: lot.sold_at,
         bidDeadlineAt: lot.bid_deadline_at,
-        // Leading team — only team name, never budget
+        // Leading team — only team name, team logos explicitly excluded from projector
         currentTeamName:
           liveOwner?.team_name || liveOwner?.owner_name || null,
-        currentTeamLogo: liveOwner?.team_logo_url || null,
+        currentTeamLogo: null,
         // Winning team for sold lots
         winningTeamName:
           winOwner?.team_name || winOwner?.owner_name || null,
-        winningTeamLogo: winOwner?.team_logo_url || null,
-        // Player info — no private contact info
-        player: player
+        winningTeamLogo: null,
+        // Player info — registration-specific details prioritized over shared player record
+        player: (player || reg)
           ? {
               name:
                 reg?.registered_name_snapshot ||
-                player.full_name ||
+                player?.full_name ||
                 'Player',
-              image: player.profile_image_url || null,
+              image:
+                reg?.registered_image_snapshot ||
+                player?.profile_image_url ||
+                null,
               role:
                 reg?.registered_role_snapshot ||
-                player.cricket_role ||
+                player?.cricket_role ||
                 null,
               battingStyle:
                 reg?.registered_batting_style_snapshot ||
-                player.batting_style ||
+                player?.batting_style ||
+                null,
+              bowlingStyle:
+                reg?.registered_bowling_style_snapshot ||
                 null,
             }
           : null,

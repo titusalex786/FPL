@@ -18,7 +18,33 @@ export const bowlingStylesEnum = z.enum([
   'LEFT_ARM_SPIN',
   'DOESNT_BOWL',
 ]);
-export const jerseySizesEnum = z.enum(['S', 'M', 'L', 'XL', 'XXL', '3XL']);
+export const numericJerseySizes = [
+  '38',
+  '40',
+  '42',
+  '44',
+  '46',
+  '48',
+  '50',
+  '52',
+] as const;
+export const legacyJerseySizes = ['S', 'M', 'L', 'XL', 'XXL', '3XL'] as const;
+export const jerseySizesEnum = z.enum([
+  '38',
+  '40',
+  '42',
+  '44',
+  '46',
+  '48',
+  '50',
+  '52',
+  'S',
+  'M',
+  'L',
+  'XL',
+  'XXL',
+  '3XL',
+]);
 
 export const playerCricketDetailsSchema = z.object({
   cricketRole: cricketRolesEnum,

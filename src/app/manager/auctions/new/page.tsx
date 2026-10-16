@@ -63,6 +63,7 @@ export default function NewAuctionPage() {
   const [tournaments, setTournaments] = useState<TournamentOption[]>([]);
   const [selectedTournamentId, setSelectedTournamentId] = useState('');
   const [auctionName, setAuctionName] = useState('');
+  const [isPractice, setIsPractice] = useState(false);
   const [configuration, setConfiguration] = useState(initialConfiguration);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -105,9 +106,24 @@ export default function NewAuctionPage() {
     setConfiguration((current) => ({ ...current, [field]: value === '' ? 0 : Number(value) }));
   }
 
+  function handlePracticeToggle(checked: boolean) {
+    setIsPractice(checked);
+    if (checked) {
+      setAuctionName((prev) => {
+        const base = prev.replace(/^\[PRACTICE\]\s*/, '').trim();
+        return `[PRACTICE] ${base || (selectedTournament ? `${selectedTournament.name} Auction` : 'Practice Auction')}`;
+      });
+    } else {
+      setAuctionName((prev) => prev.replace(/^\[PRACTICE\]\s*/, '').trim());
+    }
+  }
+
   async function createAuction() {
     if (!selectedTournament || selectedTournament.existingAuction) return;
-    if (!window.confirm('Create this auction and initialize team budgets?')) return;
+    const confirmMsg = isPractice
+      ? 'Create a SAFE Disposable Practice Auction? You can test bidding, reveals, and rounds, and delete only practice records with 1 click.'
+      : 'Create this auction and initialize team budgets?';
+    if (!window.confirm(confirmMsg)) return;
 
     setCreating(true);
     setError(null);
@@ -118,6 +134,7 @@ export default function NewAuctionPage() {
         body: JSON.stringify({
           tournamentId: selectedTournament.id,
           auctionName,
+          isPractice,
           ...configuration,
         }),
       });
@@ -203,6 +220,26 @@ export default function NewAuctionPage() {
           </select>
         </label>
 
+        {/* Practice Mode Toggle */}
+        <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-4">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isPractice}
+              onChange={(e) => handlePracticeToggle(e.target.checked)}
+              className="mt-1 h-5 w-5 rounded border-purple-500 text-purple-600 accent-purple-500 focus:ring-purple-400"
+            />
+            <div className="space-y-1">
+              <span className="text-sm font-bold text-purple-200 flex items-center gap-2">
+                <span>🧪 Practice Auction Mode (Disposable & Safe)</span>
+              </span>
+              <p className="text-xs text-purple-300/80">
+                Runs an end-to-end sandbox auction using current tournament participants. All real player registrations, profiles, and payments remain 100% protected and isolated. Provides a 1-click safe cleanup action that deletes ONLY practice auction records.
+              </p>
+            </div>
+          </label>
+        </div>
+
         <label className="grid gap-2 text-sm font-semibold text-slate-200">
           Auction name
           <input
@@ -283,6 +320,12 @@ export default function NewAuctionPage() {
               <div><dt className="text-slate-500">Low / High Increment</dt><dd>{formatRupees(configuration.lowIncrement)} / {formatRupees(configuration.highIncrement)}</dd></div>
               <div><dt className="text-slate-500">Minimum Reserve</dt><dd>{formatRupees(configuration.minimumReserve)}</dd></div>
               <div><dt className="text-slate-500">Bid Timer</dt><dd>{configuration.bidTimerSeconds} seconds</dd></div>
+              <div>
+                <dt className="text-slate-500">Mode</dt>
+                <dd className={isPractice ? 'font-bold text-purple-300' : 'text-slate-200'}>
+                  {isPractice ? '🧪 Practice Auction (Disposable)' : 'Standard Auction'}
+                </dd>
+              </div>
             </dl>
             {selectedTournament.existingAuction && (
               <p className="mt-4 text-sm font-semibold text-amber-300">

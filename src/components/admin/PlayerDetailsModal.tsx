@@ -10,6 +10,7 @@ import {
   TournamentRegistrationDTO,
   PlayerProfileDTO,
 } from '@/lib/admin/player-details';
+import { toNumericJerseySize, JERSEY_SIZE_OPTIONS } from '@/lib/utils/jersey-size';
 import {
   User,
   ShieldCheck,
@@ -130,7 +131,7 @@ export const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
     setEditBowlingStyle(player.bowling_style || 'NONE');
     setEditJerseyName(player.jersey_name || '');
     setEditJerseyNumber(player.jersey_number || '');
-    setEditJerseySize(player.jersey_size || 'M');
+    setEditJerseySize(toNumericJerseySize(player.jersey_size) || '40');
     setEditProfileImage(null);
     setEditReason('');
     setProfileEditError(null);
@@ -408,12 +409,11 @@ export const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
                         onChange={(e) => setEditJerseySize(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-emerald-500"
                       >
-                        <option value="S">S</option>
-                        <option value="M">M</option>
-                        <option value="L">L</option>
-                        <option value="XL">XL</option>
-                        <option value="XXL">XXL</option>
-                        <option value="3XL">3XL</option>
+                        {JERSEY_SIZE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -587,7 +587,7 @@ export const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
                       </div>
                       <div>
                         <span className="text-[10px] text-slate-500 block">Default Size</span>
-                        <span className="font-bold text-slate-200">{player.jersey_size || 'M'}</span>
+                        <span className="font-bold text-slate-200">{toNumericJerseySize(player.jersey_size) || '—'}</span>
                       </div>
                     </div>
                   </div>
@@ -710,7 +710,7 @@ export const PlayerDetailsModal: React.FC<PlayerDetailsModalProps> = ({
                     </div>
                     <div>
                       <span className="text-[10px] text-slate-500 block">Jersey Size</span>
-                      <span className="font-bold text-slate-200">{activeReg.registered_jersey_size || 'M'}</span>
+                      <span className="font-bold text-slate-200">{toNumericJerseySize(activeReg.registered_jersey_size) || '—'}</span>
                     </div>
                   </div>
                 </div>

@@ -96,7 +96,7 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
     bowlingStyle: '',
     jerseyName: '',
     jerseyNumber: '',
-    jerseySize: 'M',
+    jerseySize: '40',
     photoUrl: '',
   });
 
@@ -126,7 +126,7 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
     bowlingStyle: '',
     jerseyName: '',
     jerseyNumber: '',
-    jerseySize: 'M',
+    jerseySize: '40',
     photoUrl: '',
   });
 
@@ -291,7 +291,7 @@ export const TeamOwnerRegistrationModal: React.FC<TeamOwnerRegistrationModalProp
           iconPlayerRole: iconData.cricketRole,
           iconPlayerBattingStyle: iconData.battingStyle,
           iconPlayerBowlingStyle: iconData.bowlingStyle || null,
-          iconJerseySize: iconData.jerseySize || 'M',
+          iconJerseySize: iconData.jerseySize || '40',
           iconJerseyName: (iconData.jerseyName || iconData.fullName).trim(),
           iconJerseyNumber: (iconData.jerseyNumber || '').trim(),
           iconProfileImageUrl: effectiveIconPhoto,

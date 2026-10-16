@@ -8,6 +8,7 @@ type PublicPlayer = {
   image: string | null;
   role: string | null;
   battingStyle: string | null;
+  bowlingStyle?: string | null;
 };
 
 type PublicLot = {
@@ -143,8 +144,16 @@ function PlayerPhoto({ src, name }: { src: string | null; name: string }) {
   );
 }
 
-function RoleChip({ role, batting }: { role: string | null; batting: string | null }) {
-  const label = [role, batting].filter(Boolean).join(' · ');
+function RoleChip({
+  role,
+  batting,
+  bowling,
+}: {
+  role: string | null;
+  batting: string | null;
+  bowling?: string | null;
+}) {
+  const label = [role, batting, bowling].filter(Boolean).join(' · ');
   if (!label) return null;
   return (
     <span className="inline-block rounded-full border border-teal-500/30 bg-teal-500/10 px-4 py-1.5 text-sm font-bold uppercase tracking-widest text-teal-300">
@@ -371,6 +380,7 @@ export default function ProjectorLivePage({
                   <RoleChip
                     role={liveLot.player?.role || null}
                     batting={liveLot.player?.battingStyle || null}
+                    bowling={liveLot.player?.bowlingStyle || null}
                   />
                 </div>
               </div>
@@ -439,6 +449,7 @@ export default function ProjectorLivePage({
                   <RoleChip
                     role={state.nextLot.player?.role || null}
                     batting={state.nextLot.player?.battingStyle || null}
+                    bowling={state.nextLot.player?.bowlingStyle || null}
                   />
                 </div>
               )}

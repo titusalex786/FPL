@@ -108,7 +108,7 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
           registration:registrations (
             registered_name_snapshot, registered_role_snapshot,
             registered_batting_style_snapshot, registered_bowling_style_snapshot,
-            registered_jersey_size_snapshot
+            registered_jersey_size_snapshot, registered_image_snapshot
           )
         `)
         .eq('auction_id', auctionId)
@@ -340,19 +340,26 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
             soldAmount: lot.sold_amount,
             soldAt: lot.sold_at,
             bidDeadlineAt: lot.bid_deadline_at,
-            player: player
+            player: (player || registration)
               ? {
-                  id: player.id,
-                  name: registration?.registered_name_snapshot || player.full_name,
-                  image: player.profile_image_url,
-                  role: registration?.registered_role_snapshot || player.cricket_role,
+                  id: player?.id || lot.player_id,
+                  name: registration?.registered_name_snapshot || player?.full_name || 'Player',
+                  image:
+                    lot.status === 'LIVE'
+                      ? registration?.registered_image_snapshot ||
+                        player?.profile_image_url ||
+                        null
+                      : null,
+                  role: registration?.registered_role_snapshot || player?.cricket_role || null,
                   battingStyle:
                     registration?.registered_batting_style_snapshot ||
-                    player.batting_style,
+                    player?.batting_style ||
+                    null,
                   bowlingStyle: registration?.registered_bowling_style_snapshot || null,
                   jerseySize:
                     registration?.registered_jersey_size_snapshot ||
-                    player.jersey_size,
+                    player?.jersey_size ||
+                    null,
                 }
               : null,
           };

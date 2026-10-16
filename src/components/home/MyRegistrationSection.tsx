@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
+import { JERSEY_SIZE_OPTIONS, toNumericJerseySize } from '@/lib/utils/jersey-size';
 import {
   Trophy,
   CheckCircle2,
@@ -43,7 +44,7 @@ export const MyRegistrationSection: React.FC = () => {
   const [editName, setEditName] = useState<string>('');
   const [editJerseyName, setEditJerseyName] = useState<string>('');
   const [editJerseyNumber, setEditJerseyNumber] = useState<string>('');
-  const [editJerseySize, setEditJerseySize] = useState<string>('M');
+  const [editJerseySize, setEditJerseySize] = useState<string>('40');
   const [editRole, setEditRole] = useState<string>('BATSMAN');
   const [editBattingStyle, setEditBattingStyle] = useState<string>('RIGHT_HAND');
   const [editBowlingStyle, setEditBowlingStyle] = useState<string>('DOESNT_BOWL');
@@ -216,14 +217,7 @@ export const MyRegistrationSection: React.FC = () => {
     { value: 'LEFT_ARM_SPIN', label: 'Left-arm Spin' },
   ];
 
-  const JERSEY_SIZE_OPTIONS = [
-    { value: 'S', label: 'Small (S - 38")' },
-    { value: 'M', label: 'Medium (M - 40")' },
-    { value: 'L', label: 'Large (L - 42")' },
-    { value: 'XL', label: 'X-Large (XL - 44")' },
-    { value: 'XXL', label: 'XX-Large (XXL - 46")' },
-    { value: '3XL', label: '3X-Large (3XL - 48")' },
-  ];
+
 
   const correctionHistory = activeRegistration.correction_history || [];
   const activeCorrection =
@@ -252,7 +246,7 @@ export const MyRegistrationSection: React.FC = () => {
     setEditName(activeRegistration.registered_name_snapshot || '');
     setEditJerseyName(activeRegistration.registered_jersey_name_snapshot || '');
     setEditJerseyNumber(activeRegistration.registered_jersey_number_snapshot || '');
-    setEditJerseySize(activeRegistration.registered_jersey_size_snapshot || 'M');
+    setEditJerseySize(toNumericJerseySize(activeRegistration.registered_jersey_size_snapshot));
     setEditRole(activeRegistration.registered_role_snapshot || 'BATSMAN');
     setEditBattingStyle(activeRegistration.registered_batting_style_snapshot || 'RIGHT_HAND');
     setEditBowlingStyle(activeRegistration.registered_bowling_style_snapshot || 'DOESNT_BOWL');
@@ -646,7 +640,7 @@ export const MyRegistrationSection: React.FC = () => {
               <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 flex justify-between items-center">
                 <span className="text-slate-400">Jersey Size:</span>
                 <span className="font-black text-emerald-400 text-sm">
-                  {activeRegistration.registered_jersey_size_snapshot || 'M'}
+                  {toNumericJerseySize(activeRegistration.registered_jersey_size_snapshot)}
                 </span>
               </div>
             </div>

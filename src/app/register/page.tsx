@@ -11,6 +11,7 @@ import { Step3Review } from '@/components/register/Step3Review';
 import { Step1PersonalInput, Step2CricketInput } from '@/lib/validation/registration';
 import { ShieldAlert, Lock, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { toNumericJerseySize } from '@/lib/utils/jersey-size';
 import { createClient } from '@/lib/supabase/client';
 
 function RegisterContent() {
@@ -40,7 +41,7 @@ function RegisterContent() {
     additionalSkills: '',
     jerseyName: '',
     jerseyNumber: '',
-    jerseySize: 'M',
+    jerseySize: '40',
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -97,7 +98,7 @@ function RegisterContent() {
                   : 'DOESNT_BOWL'),
               jerseyName: player.jersey_name || player.full_name || defaultName,
               jerseyNumber: player.jersey_number || '',
-              jerseySize: player.jersey_size || 'M',
+              jerseySize: toNumericJerseySize(player.jersey_size),
             }));
           }
         } else {
@@ -165,7 +166,7 @@ function RegisterContent() {
         bowlingStyle: cricketData.bowlingStyle || 'DOESNT_BOWL',
         jerseyName: (cricketData.jerseyName || personalData.fullName).trim(),
         jerseyNumber: (cricketData.jerseyNumber || '').trim(),
-        jerseySize: cricketData.jerseySize || 'M',
+        jerseySize: toNumericJerseySize(cricketData.jerseySize),
         mobile: personalData.mobile,
         city: personalData.city,
         dateOfBirth: personalData.dateOfBirth,

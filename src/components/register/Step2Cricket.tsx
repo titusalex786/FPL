@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Step2CricketInput } from '@/lib/validation/registration';
 import { Select } from '@/components/ui/Select';
+import { JERSEY_SIZE_OPTIONS, toNumericJerseySize } from '@/lib/utils/jersey-size';
 import { Input } from '@/components/ui/Input';
 import { JerseyInfoTooltip } from '@/components/ui/JerseyInfoTooltip';
 import { Button } from '@/components/ui/Button';
@@ -208,18 +209,11 @@ export const Step2Cricket: React.FC<Step2Props> = ({ initialData, onNext, onBack
                 <Select
                   label="Jersey Size *"
                   required
-                  value={formData.jerseySize || 'M'}
+                  value={formData.jerseySize ? toNumericJerseySize(formData.jerseySize) : '40'}
                   onChange={(e) =>
                     setFormData((prev) => ({ ...prev, jerseySize: e.target.value }))
                   }
-                  options={[
-                    { value: 'S', label: 'Small (S - 38")' },
-                    { value: 'M', label: 'Medium (M - 40")' },
-                    { value: 'L', label: 'Large (L - 42")' },
-                    { value: 'XL', label: 'X-Large (XL - 44")' },
-                    { value: 'XXL', label: 'XX-Large (XXL - 46")' },
-                    { value: '3XL', label: '3X-Large (3XL - 48")' },
-                  ]}
+                  options={JERSEY_SIZE_OPTIONS}
                 />
               </div>
             </div>

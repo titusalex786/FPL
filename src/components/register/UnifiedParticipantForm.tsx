@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Input } from '@/components/ui/Input';
 import { compressImageFile } from '@/lib/utils/image';
 import { JerseyInfoTooltip } from '@/components/ui/JerseyInfoTooltip';
+import { JERSEY_SIZE_OPTIONS } from '@/lib/utils/jersey-size';
 import { Upload, Image as ImageIcon, ShieldAlert } from 'lucide-react';
 
 export interface ParticipantFormData {
@@ -54,14 +55,8 @@ export const BOWLING_STYLE_OPTIONS = [
   { value: 'LEFT_ARM_SPIN', label: 'Left Arm Spin' },
 ];
 
-export const JERSEY_SIZE_OPTIONS = [
-  { value: 'S', label: 'Small (S - 38")' },
-  { value: 'M', label: 'Medium (M - 40")' },
-  { value: 'L', label: 'Large (L - 42")' },
-  { value: 'XL', label: 'X-Large (XL - 44")' },
-  { value: 'XXL', label: 'XX-Large (XXL - 46")' },
-  { value: '3XL', label: '3X-Large (3XL - 48")' },
-];
+export { JERSEY_SIZE_OPTIONS } from '@/lib/utils/jersey-size';
+import { toNumericJerseySize } from '@/lib/utils/jersey-size';
 
 const ROLES_REQUIRING_BOWLING_STYLE = ['BOWLER', 'ALL_ROUNDER', 'BOWLER_WICKETKEEPER'];
 
@@ -84,7 +79,7 @@ export const UnifiedParticipantForm: React.FC<UnifiedParticipantFormProps> = ({
     bowlingStyle: initialData.bowlingStyle || '',
     jerseyName: initialData.jerseyName || initialData.fullName || '',
     jerseyNumber: initialData.jerseyNumber || '',
-    jerseySize: initialData.jerseySize || 'M',
+    jerseySize: initialData.jerseySize ? toNumericJerseySize(initialData.jerseySize) : '40',
     photoUrl: initialData.photoUrl || '',
   });
 

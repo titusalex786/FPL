@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/auth/is-admin';
+import { toNumericJerseySize } from '@/lib/utils/jersey-size';
 
 export async function GET(req: NextRequest) {
   try {
@@ -108,7 +109,7 @@ export async function GET(req: NextRequest) {
         `"${(row.registered_bowling_style_snapshot || '-').replace(/"/g, '""')}"`,
         `"${(row.registered_name_snapshot || p.full_name || '').replace(/"/g, '""')}"`,
         `"-"`,
-        `"${(row.registered_jersey_size_snapshot || 'M').replace(/"/g, '""')}"`,
+        `"${toNumericJerseySize(row.registered_jersey_size_snapshot) || '40'}"`,
         `"${(pay.payment_method || 'UPI_QR').replace(/"/g, '""')}"`,
         `"${(pay.payment_status || 'PENDING').replace(/"/g, '""')}"`,
         `"${(row.registration_status || '').replace(/"/g, '""')}"`,

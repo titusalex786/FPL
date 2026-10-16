@@ -5,6 +5,7 @@ import { Step1PersonalInput, Step2CricketInput } from '@/lib/validation/registra
 import { Button } from '@/components/ui/Button';
 import { formatPaiseToINR, cricketRoleLabels } from '@/lib/utils/format';
 import { CheckCircle2, Edit3, CreditCard, ShieldAlert, ArrowLeft } from 'lucide-react';
+import { toNumericJerseySize } from '@/lib/utils/jersey-size';
 
 export interface Step3Props {
   personalData: Step1PersonalInput;
@@ -128,7 +129,7 @@ export const Step3Review: React.FC<Step3Props> = ({
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-slate-400">Jersey Size:</span>
-                <span className="font-bold text-amber-400 text-right">{cricketData.jerseySize || 'M'}</span>
+                <span className="font-bold text-amber-400 text-right">{toNumericJerseySize(cricketData.jerseySize)}</span>
               </div>
             </div>
           </div>

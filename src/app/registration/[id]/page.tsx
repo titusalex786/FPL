@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { formatPaiseToINR, formatDate, cricketRoleLabels } from '@/lib/utils/format';
 import { computeDerivedRegistrationStatus } from '@/lib/utils/derived-status';
 import { FullPlayerRegistrationProfile, JerseySize } from '@/types';
+import { JERSEY_SIZE_OPTIONS, toNumericJerseySize } from '@/lib/utils/jersey-size';
 import {
   Trophy,
   CheckCircle2,
@@ -104,7 +105,7 @@ export default function RegistrationDetailsPage() {
             setEditName(result.registration.registered_name_snapshot || '');
             setEditJerseyName(result.registration.registered_jersey_name_snapshot || '');
             setEditJerseyNumber(result.registration.registered_jersey_number_snapshot || '');
-            setEditJerseySize(result.registration.registered_jersey_size_snapshot || 'M');
+            setEditJerseySize(toNumericJerseySize(result.registration.registered_jersey_size_snapshot));
             setEditRole(result.registration.registered_role_snapshot || 'BATSMAN');
             setEditBattingStyle(result.registration.registered_batting_style_snapshot || 'RIGHT_HAND');
             setEditBowlingStyle(result.registration.registered_bowling_style_snapshot || '');
@@ -500,12 +501,11 @@ export default function RegistrationDetailsPage() {
                               value={editJerseySize}
                               onChange={(e) => setEditJerseySize(e.target.value as JerseySize)}
                             >
-                              <option value="S">Small (S - 38")</option>
-                              <option value="M">Medium (M - 40")</option>
-                              <option value="L">Large (L - 42")</option>
-                              <option value="XL">X-Large (XL - 44")</option>
-                              <option value="XXL">XX-Large (XXL - 46")</option>
-                              <option value="3XL">3X-Large (3XL - 48")</option>
+                              {JERSEY_SIZE_OPTIONS.map((o) => (
+                                <option key={o.value} value={o.value}>
+                                  {o.label}
+                                </option>
+                              ))}
                             </select>
                           </div>
                         )}
@@ -737,7 +737,7 @@ export default function RegistrationDetailsPage() {
                     <div className="flex justify-between py-1 border-b border-slate-900">
                       <span className="text-slate-400">Jersey Size:</span>
                       <span className="font-bold text-emerald-400">
-                        {data.registration.registered_jersey_size_snapshot || data.player.jersey_size || 'M'}
+                        {toNumericJerseySize(data.registration.registered_jersey_size_snapshot || data.player.jersey_size)}
                       </span>
                     </div>
                     <div className="flex justify-between py-1">

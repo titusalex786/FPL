@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/auth/is-admin';
+import { toNumericJerseySize } from '@/lib/utils/jersey-size';
 
 export async function GET() {
   try {
@@ -62,7 +63,7 @@ export async function GET() {
         `"${p.email || ''}"`,
         `"${row.registered_role_snapshot || p.cricket_role || ''}"`,
         `"${row.registered_batting_style_snapshot || p.batting_style || ''}"`,
-        `"${row.registered_jersey_size_snapshot || 'M'}"`,
+        `"${toNumericJerseySize(row.registered_jersey_size_snapshot) || '40'}"`,
         `"${row.registration_status || ''}"`,
         `"${pay.payment_status || 'PENDING'}"`,
         `"${pay.amount ? pay.amount / 100 : 500}"`,

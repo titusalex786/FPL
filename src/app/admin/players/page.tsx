@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { formatDate, cricketRoleLabels } from '@/lib/utils/format';
+import { toNumericJerseySize } from '@/lib/utils/jersey-size';
 import { Download, Eye, CheckCircle2, ShieldCheck, Trophy, History, Trash2, AlertCircle, ExternalLink, Loader2 } from 'lucide-react';
 import { PlayerDetailsModal } from '@/components/admin/PlayerDetailsModal';
 
@@ -331,7 +332,7 @@ export default function AdminPlayersPage() {
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 uppercase block font-bold">Jersey</span>
-                    <span className="font-bold text-amber-400 block">{item.registered_jersey_size_snapshot || 'M'}</span>
+                    <span className="font-bold text-amber-400 block">{toNumericJerseySize(item.registered_jersey_size_snapshot) || '—'}</span>
                     {(item.registered_jersey_name_snapshot || item.registered_jersey_number_snapshot) && (
                       <span className="text-[9px] text-slate-300 font-mono block">
                         {item.registered_jersey_name_snapshot} #{item.registered_jersey_number_snapshot}
@@ -436,7 +437,7 @@ export default function AdminPlayersPage() {
                           {cricketRoleLabels[item.registered_role_snapshot as keyof typeof cricketRoleLabels] || item.registered_role_snapshot}
                         </span>
                         <span className="text-xs text-amber-400 font-bold block">
-                          Size: {item.registered_jersey_size_snapshot || 'M'}
+                          Size: {toNumericJerseySize(item.registered_jersey_size_snapshot) || '—'}
                         </span>
                         {(item.registered_jersey_name_snapshot || item.registered_jersey_number_snapshot) && (
                           <span className="text-[11px] text-slate-300 block font-mono">

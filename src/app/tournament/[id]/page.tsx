@@ -16,6 +16,7 @@ import { DbTournament, CricketRole, BattingStyle, BowlingStyle, JerseySize } fro
 import { Trophy, Calendar, Users, ShieldAlert, CheckCircle2, ArrowRight, Upload, Image as ImageIcon, Lock, Crown, Clock, UserCheck, UserPlus } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { TeamOwnerRegistrationModal } from '@/components/register/TeamOwnerRegistrationModal';
+import { JERSEY_SIZE_OPTIONS, toNumericJerseySize } from '@/lib/utils/jersey-size';
 
 const BOWLING_ROLES: CricketRole[] = ['BOWLER', 'ALL_ROUNDER', 'BOWLER_WICKETKEEPER'];
 
@@ -49,7 +50,7 @@ export default function PublicTournamentPage() {
   const [bowlingStyle, setBowlingStyle] = useState<BowlingStyle>('DOESNT_BOWL');
   const [jerseyName, setJerseyName] = useState('');
   const [jerseyNumber, setJerseyNumber] = useState('');
-  const [jerseySize, setJerseySize] = useState<JerseySize>('M');
+  const [jerseySize, setJerseySize] = useState<JerseySize>('40');
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   // Field error states for dynamic validation
@@ -109,7 +110,7 @@ export default function PublicTournamentPage() {
                 setCricketRole(role);
                 setBattingStyle(pData.player.batting_style || 'RIGHT_HAND');
                 setBowlingStyle(pData.player.bowling_style || (BOWLING_ROLES.includes(role) ? '' : 'DOESNT_BOWL'));
-                setJerseySize(pData.player.jersey_size || 'M');
+                setJerseySize(toNumericJerseySize(pData.player.jersey_size));
                 setJerseyName(pData.player.jersey_name || pData.player.full_name || defaultName);
                 setJerseyNumber(pData.player.jersey_number || '');
               } else {
@@ -137,7 +138,7 @@ export default function PublicTournamentPage() {
       setCricketRole('BATSMAN');
       setBattingStyle('RIGHT_HAND');
       setBowlingStyle('DOESNT_BOWL');
-      setJerseySize('M');
+      setJerseySize('40');
       setJerseyName('');
       setJerseyNumber('');
     } else if (currentUser) {
@@ -152,7 +153,7 @@ export default function PublicTournamentPage() {
             setCricketRole(role);
             setBattingStyle(pData.player.batting_style || 'RIGHT_HAND');
             setBowlingStyle(pData.player.bowling_style || (BOWLING_ROLES.includes(role) ? '' : 'DOESNT_BOWL'));
-            setJerseySize(pData.player.jersey_size || 'M');
+            setJerseySize(toNumericJerseySize(pData.player.jersey_size));
             setJerseyName(pData.player.jersey_name || pData.player.full_name || '');
             setJerseyNumber(pData.player.jersey_number || '');
           }
@@ -694,14 +695,7 @@ export default function PublicTournamentPage() {
                             required
                             value={jerseySize}
                             onChange={(e) => setJerseySize(e.target.value as JerseySize)}
-                            options={[
-                              { value: 'S', label: 'Small (S - 38")' },
-                              { value: 'M', label: 'Medium (M - 40")' },
-                              { value: 'L', label: 'Large (L - 42")' },
-                              { value: 'XL', label: 'X-Large (XL - 44")' },
-                              { value: 'XXL', label: 'XX-Large (XXL - 46")' },
-                              { value: '3XL', label: '3X-Large (3XL - 48")' },
-                            ]}
+                            options={JERSEY_SIZE_OPTIONS}
                           />
                         </div>
                       </div>
@@ -822,7 +816,7 @@ export default function PublicTournamentPage() {
                         </div>
                         <div>
                           <span className="text-slate-400 block">Jersey Size</span>
-                          <span className="font-bold text-amber-400">{myEntry.registered_jersey_size_snapshot || 'M'}</span>
+                          <span className="font-bold text-amber-400">{toNumericJerseySize(myEntry.registered_jersey_size_snapshot)}</span>
                         </div>
                         {myEntry.team_name ? (
                           <div>

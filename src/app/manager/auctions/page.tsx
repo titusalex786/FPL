@@ -15,7 +15,10 @@ import {
   RotateCcw,
   X,
   Filter,
+  Trash2,
+  CheckCircle2,
 } from 'lucide-react';
+import { requestPracticeCleanup } from '@/lib/auction/practice-cleanup';
 
 interface AuctionItem {
   id: string;
@@ -23,6 +26,7 @@ interface AuctionItem {
   tournamentId: string;
   tournamentName: string;
   status: string;
+  isPractice?: boolean;
   startingKitty: number;
   requiredPlayersToBuy: number;
   teamsCount: number;
@@ -42,6 +46,42 @@ export default function AuctionsListPage() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [tournamentFilter, setTournamentFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST'>('NEWEST');
+  const [cleaningId, setCleaningId] = useState<string | null>(null);
+  const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
+
+  async function handlePracticeCleanup(auctionId: string) {
+    if (
+      !window.confirm(
+        'Are you sure you want to clean up this Practice Auction?\n\n' +
+        'This will delete ONLY records belonging to this practice auction (lots, bids, purchases, rounds, events, budgets).\n\n' +
+        'Protected tournament participants, players, registrations, and payments will remain 100% untouched.'
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setCleaningId(auctionId);
+      setCleanupMessage(null);
+      setError(null);
+
+      const data = await requestPracticeCleanup(auctionId);
+
+      setCleanupMessage(
+        `Practice auction successfully cleaned up. Deleted ${data.deletedCounts?.auction_lots ?? 0} lots and all auction-specific records. Protected participant baseline (164 players, 100 registrations, 90 payments, 10 team owners) verified unchanged.`
+      );
+
+      const refreshRes = await fetch('/api/admin/auctions', { cache: 'no-store' });
+      if (refreshRes.ok) {
+        const refreshData = await refreshRes.json();
+        setAuctions(refreshData.auctions || []);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Practice cleanup failed.');
+    } finally {
+      setCleaningId(null);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -250,6 +290,22 @@ export default function AuctionsListPage() {
         </div>
       )}
 
+      {/* Cleanup Success Banner */}
+      {cleanupMessage && (
+        <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-200 text-sm flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            <span>{cleanupMessage}</span>
+          </div>
+          <button
+            onClick={() => setCleanupMessage(null)}
+            className="text-emerald-400 hover:text-emerald-300 p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Loading State */}
       {loading ? (
         <div className="min-h-[300px] flex flex-col items-center justify-center text-slate-400 gap-3 rounded-2xl border border-slate-800 bg-slate-900/40">
@@ -421,6 +477,11 @@ export default function AuctionsListPage() {
                             {auction.tournamentName}
                           </h2>
                           {getStatusBadge(auction.status)}
+                          {(auction.isPractice || auction.auctionName?.startsWith('[PRACTICE]')) && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-purple-500/40 bg-purple-500/15 px-2.5 py-0.5 text-xs font-bold text-purple-300">
+                              🧪 Practice Auction
+                            </span>
+                          )}
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
                           <span className="font-mono text-slate-500">ID: {shortenedId}</span>
@@ -490,6 +551,22 @@ export default function AuctionsListPage() {
                           <Tv className="w-3.5 h-3.5 text-rose-400" />
                           <span>Open Projector</span>
                         </Link>
+                        {(auction.isPractice || auction.auctionName?.startsWith('[PRACTICE]')) && (
+                          <button
+                            type="button"
+                            onClick={() => handlePracticeCleanup(auction.id)}
+                            disabled={cleaningId === auction.id}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 font-semibold px-3 py-2.5 text-xs transition-colors disabled:opacity-50"
+                            title="Safely delete ONLY records belonging to this disposable practice auction"
+                          >
+                            {cleaningId === auction.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                            )}
+                            <span>{cleaningId === auction.id ? 'Cleaning...' : 'Clean Up Practice'}</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

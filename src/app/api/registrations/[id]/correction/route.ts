@@ -68,7 +68,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       'LEFT_ARM_FAST', 'LEFT_ARM_MEDIUM', 'LEFT_ARM_SPIN',
       'DOESNT_BOWL',
     ] as const;
-    const VALID_JERSEY_SIZES = ['S', 'M', 'L', 'XL', 'XXL', '3XL'] as const;
+    const VALID_JERSEY_SIZES = [
+      '38', '40', '42', '44', '46', '48', '50', '52',
+      'S', 'M', 'L', 'XL', 'XXL', '3XL'
+    ] as const;
 
     const validationErrors: string[] = [];
 

@@ -49,16 +49,19 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       || !('action' in body)
       || (body.action !== 'START'
         && body.action !== 'SETTLE'
-        && body.action !== 'END_UNSOLD')
+        && body.action !== 'END_UNSOLD'
+        && body.action !== 'SKIP')
     ) {
-      return NextResponse.json({ error: 'Action must be START or SETTLE' }, { status: 400 });
+      return NextResponse.json({ error: 'Action must be START, SETTLE, END_UNSOLD, or SKIP' }, { status: 400 });
     }
 
     const functionName = body.action === 'START'
       ? 'start_auction_lot_v1'
       : body.action === 'END_UNSOLD'
         ? 'end_auction_lot_unsold_v1'
-        : 'settle_auction_lot_v1';
+        : body.action === 'SKIP'
+          ? 'skip_auction_lot_v1'
+          : 'settle_auction_lot_v1';
     const { data, error } = await createAdminClient().rpc(functionName, {
       p_auction_id: auctionId,
       p_lot_id: lotId,

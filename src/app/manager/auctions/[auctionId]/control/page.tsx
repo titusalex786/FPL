@@ -240,7 +240,7 @@ export default function AuctionControlPanelPage() {
   const secondsRemaining = liveLot?.bidDeadlineAt
     ? Math.max(0, Math.ceil((new Date(liveLot.bidDeadlineAt).getTime() - now) / 1000))
     : null;
-  const isAuctionActive = data ? ['OPEN', 'LIVE'].includes(data.auction.status) : false;
+  const isAuctionActive = data ? ['DRAFT', 'OPEN', 'LIVE'].includes(data.auction.status) : false;
   const isAuctionPaused = data?.auction.status === 'PAUSED';
   const canEditSelection = data
     ? ['DRAFT', 'OPEN'].includes(data.auction.status)
@@ -495,8 +495,16 @@ export default function AuctionControlPanelPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Pause / Resume Controls */}
-          {isAuctionPaused ? (
+          {/* Auction Lifecycle Controls */}
+          {data.auction.status === 'DRAFT' ? (
+            <button
+              onClick={() => void postAction(`/api/admin/auctions/${auctionId}/open`)}
+              disabled={busy}
+              className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg hover:bg-teal-500 disabled:opacity-50"
+            >
+              <Play className="h-4 w-4" /> Start Auction
+            </button>
+          ) : isAuctionPaused ? (
             <button
               onClick={() => void postAction(`/api/admin/auctions/${auctionId}/resume`)}
               disabled={busy}
@@ -792,6 +800,15 @@ export default function AuctionControlPanelPage() {
                       className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2 text-sm font-bold text-white shadow-lg hover:from-amber-400 hover:to-amber-500 disabled:opacity-50"
                     >
                       <span>🎲 Reveal Random Player</span>
+                    </button>
+                  )}
+                  {data.auction.status === 'DRAFT' && (
+                    <button
+                      disabled={busy}
+                      onClick={() => void postAction(`/api/admin/auctions/${auctionId}/open`)}
+                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                    >
+                      <Play className="h-4 w-4" /> Open Auction
                     </button>
                   )}
                   {nextLot && isAuctionActive && !isAuctionPaused && (

@@ -120,6 +120,11 @@ function TimerRing({
 
 function PlayerPhoto({ src, name }: { src: string | null; name: string }) {
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
   if (!src || failed) {
     return (
       <div
@@ -438,21 +443,6 @@ export default function ProjectorLivePage({
           ) : (
             <div className="text-center">
               <p className="text-3xl font-black text-white">Waiting for next player…</p>
-              {state.nextLot && (
-                <div className="mt-6 text-center">
-                  <p className="text-sm font-bold uppercase tracking-widest text-slate-400">
-                    Up next
-                  </p>
-                  <p className="mt-1 text-xl font-black text-white">
-                    {state.nextLot.player?.name || 'Player'}
-                  </p>
-                  <RoleChip
-                    role={state.nextLot.player?.role || null}
-                    batting={state.nextLot.player?.battingStyle || null}
-                    bowling={state.nextLot.player?.bowlingStyle || null}
-                  />
-                </div>
-              )}
             </div>
           )}
         </section>

@@ -55,6 +55,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Action must be START, SETTLE, END_UNSOLD, or SKIP' }, { status: 400 });
     }
 
+    const supabase = createAdminClient();
+
+    if (body.action === 'START') {
+      await supabase
+        .from('auctions')
+        .update({ status: 'OPEN', updated_at: new Date().toISOString() })
+        .eq('id', auctionId)
+        .eq('status', 'DRAFT');
+    }
+
     const functionName = body.action === 'START'
       ? 'start_auction_lot_v1'
       : body.action === 'END_UNSOLD'
@@ -62,7 +72,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         : body.action === 'SKIP'
           ? 'skip_auction_lot_v1'
           : 'settle_auction_lot_v1';
-    const { data, error } = await createAdminClient().rpc(functionName, {
+    const { data, error } = await supabase.rpc(functionName, {
       p_auction_id: auctionId,
       p_lot_id: lotId,
       p_actor_id: user.id,

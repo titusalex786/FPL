@@ -115,7 +115,6 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 
     const displayedLots = [
       liveLot,
-      !liveLot ? nextLot : null,
       ...recentlySold,
     ].filter((lot): lot is NonNullable<typeof lot> => lot !== null);
 
@@ -235,7 +234,7 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
           currentRoundType: currentRound?.round_type || null,
         },
         liveLot: liveLot ? buildPublicLot(liveLot) : null,
-        nextLot: nextLot && !liveLot ? buildPublicLot(nextLot) : null,
+        nextLot: null,
         recentlySold: recentlySold.map(buildPublicLot),
         stats: {
           totalLots: lots.length,

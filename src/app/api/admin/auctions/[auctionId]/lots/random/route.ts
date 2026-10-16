@@ -49,8 +49,16 @@ export async function POST(_request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
     }
 
-    if (!['OPEN', 'LIVE'].includes(auction.status)) {
+    if (!['DRAFT', 'OPEN', 'LIVE'].includes(auction.status)) {
       return NextResponse.json({ error: 'Auction is not open or live' }, { status: 409 });
+    }
+
+    if (auction.status === 'DRAFT') {
+      await supabase
+        .from('auctions')
+        .update({ status: 'OPEN', updated_at: new Date().toISOString() })
+        .eq('id', auctionId)
+        .eq('status', 'DRAFT');
     }
 
     // 2. Ensure no live lot currently exists

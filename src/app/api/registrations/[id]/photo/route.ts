@@ -40,7 +40,7 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
       });
     }
 
-    const imageRaw =
+    const imageRaw: string | null =
       reg.registered_image_snapshot ||
       (reg.player as any)?.profile_image_url ||
       null;
@@ -78,6 +78,33 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
           headers: {
             'Content-Type': mimeType,
             'Content-Length': String(buffer.length),
+            'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        });
+      }
+    }
+
+    // Preserve legacy references to public assets served by the app itself.
+    if (imageRaw.startsWith('/') && !imageRaw.startsWith('//')) {
+      return NextResponse.redirect(new URL(imageRaw, _req.url), {
+        status: 307,
+        headers: {
+          'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+        },
+      });
+    }
+
+    // Newer registrations may store the Storage object path instead of its public URL.
+    const objectPath = imageRaw.replace(/^profile-images\//, '');
+    if (objectPath && !objectPath.split('/').some((segment) => segment === '.' || segment === '..')) {
+      const { data: publicData } = supabase.storage
+        .from('profile-images')
+        .getPublicUrl(objectPath);
+
+      if (publicData.publicUrl) {
+        return NextResponse.redirect(publicData.publicUrl, {
+          status: 307,
+          headers: {
             'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
           },
         });

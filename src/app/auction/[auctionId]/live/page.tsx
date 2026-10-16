@@ -125,27 +125,28 @@ function PlayerPhoto({ src, name }: { src: string | null; name: string }) {
     setFailed(false);
   }, [src]);
 
-  if (!src || failed) {
-    return (
-      <div
-        className="flex items-center justify-center rounded-3xl bg-slate-800/60 text-slate-500"
-        style={{ width: 220, height: 260 }}
-      >
-        <svg width={64} height={64} viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
-        </svg>
-      </div>
-    );
-  }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt={name}
-      onError={() => setFailed(true)}
-      className="rounded-3xl object-cover shadow-2xl"
-      style={{ width: 220, height: 260 }}
-    />
+    <div className="relative flex items-center justify-center overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-950/90 p-2 shadow-2xl w-[280px] h-[340px] sm:w-[320px] sm:h-[380px] md:w-[380px] md:h-[440px] max-w-[90vw] max-h-[50vh]">
+      {!src || failed ? (
+        <div className="flex flex-col items-center justify-center text-slate-500">
+          <svg width={72} height={72} viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
+          </svg>
+          <span className="mt-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            No Photo Available
+          </span>
+        </div>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={name}
+          onError={() => setFailed(true)}
+          className="h-full w-full rounded-2xl object-contain"
+          style={{ objectFit: 'contain' }}
+        />
+      )}
+    </div>
   );
 }
 
@@ -170,8 +171,22 @@ function RoleChip({
 function SoldCard({ lot }: { lot: PublicLot }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-slate-700/50 bg-slate-800/50 px-4 py-3">
-      <PlayerPhoto src={lot.player?.image || null} name={lot.player?.name || 'Player'} />
-      <div className="min-w-0 flex-1" style={{ width: 100, height: 80 }}>
+      {lot.player?.image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={lot.player.image}
+          alt={lot.player.name || 'Player'}
+          className="h-16 w-16 rounded-xl border border-slate-700/50 bg-slate-900 object-contain p-0.5"
+          style={{ objectFit: 'contain' }}
+        />
+      ) : (
+        <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-slate-700/50 bg-slate-900 text-slate-500">
+          <svg width={28} height={28} viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
+          </svg>
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold text-white">{lot.player?.name || '—'}</p>
         <p className="mt-0.5 text-xs text-slate-400">{lot.winningTeamName || '—'}</p>
         <p className="mt-1 text-base font-black text-emerald-400">{fmt(lot.soldAmount)}</p>

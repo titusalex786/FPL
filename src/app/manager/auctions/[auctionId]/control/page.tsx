@@ -624,12 +624,15 @@ export default function AuctionControlPanelPage() {
               <div className="space-y-6">
                 <div className="grid gap-5 md:grid-cols-[150px_1fr]">
                   {liveLot.player?.image ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={liveLot.player.image}
-                      alt=""
-                      className="h-40 w-full rounded-xl object-cover md:w-[150px]"
-                    />
+                    <div className="flex h-40 w-full items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-slate-950/80 p-1 md:w-[150px]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={liveLot.player.image}
+                        alt=""
+                        className="max-h-full max-w-full rounded-lg object-contain"
+                        style={{ objectFit: 'contain' }}
+                      />
+                    </div>
                   ) : (
                     <div className="flex h-40 items-center justify-center rounded-xl bg-slate-800 text-slate-500 md:w-[150px]">
                       <Users className="h-8 w-8" />

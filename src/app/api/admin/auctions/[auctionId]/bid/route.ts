@@ -18,6 +18,7 @@ type BidErrorCode =
   | 'PLAYER_NOT_AVAILABLE'
   | 'TEAM_NOT_ELIGIBLE'
   | 'BIDDER_NOT_AUTHORIZED'
+  | 'CANNOT_OUTBID_SELF'
   | 'SELF_BIDDING_NOT_ALLOWED'
   | 'BID_BELOW_BASE'
   | 'BID_NOT_HIGHER_THAN_CURRENT'
@@ -37,6 +38,7 @@ const BID_ERROR_MESSAGES: Record<BidErrorCode, string> = {
   PLAYER_NOT_AVAILABLE: 'This player is not available for bidding.',
   TEAM_NOT_ELIGIBLE: 'Team is not eligible to bid.',
   BIDDER_NOT_AUTHORIZED: 'You are not authorized to place bids.',
+  CANNOT_OUTBID_SELF: 'Team is already the leading bidder.',
   SELF_BIDDING_NOT_ALLOWED: 'Team cannot bid on its own player.',
   BID_BELOW_BASE: 'Bid is below the minimum bid.',
   BID_NOT_HIGHER_THAN_CURRENT: 'Bid must be higher than current bid.',
@@ -61,7 +63,7 @@ function responseForBidError(error: unknown) {
   );
 
   if (!code) {
-    console.error('Admin auction bid RPC failed', error);
+    console.error('[Admin Auction Bid RPC Error]:', error);
     return NextResponse.json(
       { error: 'Unable to place bid right now.' },
       { status: 500 }
@@ -77,6 +79,7 @@ function responseForBidError(error: unknown) {
             code === 'LOT_NOT_LIVE' ||
             code === 'LOT_ALREADY_SOLD' ||
             code === 'BID_DEADLINE_EXPIRED' ||
+            code === 'CANNOT_OUTBID_SELF' ||
             code === 'BID_NOT_HIGHER_THAN_CURRENT'
           ? 409
           : 422;

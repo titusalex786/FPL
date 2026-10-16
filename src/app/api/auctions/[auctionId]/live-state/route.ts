@@ -51,18 +51,13 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
       supabase
         .from('auction_lots')
         .select(`
-          id, lot_number, status,
+          id, registration_id, player_id, lot_number, status,
           current_highest_bid, current_highest_team_owner_id,
           winning_team_owner_id, sold_amount, sold_at, bid_deadline_at,
           round_id,
-          round:auction_rounds (round_number, round_type),
-          player:players (
-            id, full_name, profile_image_url, cricket_role, batting_style
-          ),
           registration:registrations (
             registered_name_snapshot, registered_role_snapshot,
-            registered_batting_style_snapshot, registered_bowling_style_snapshot,
-            registered_image_snapshot
+            registered_batting_style_snapshot, registered_bowling_style_snapshot
           )
         `)
         .eq('auction_id', auctionId)
@@ -80,6 +75,7 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 
     const lots = lotsResult.data || [];
     const rounds = roundsResult.data || [];
+    const roundById = new Map((rounds || []).map((r) => [r.id, r]));
 
     // Collect all team_owner_ids needed for public name lookup only
     const teamOwnerIds = [
@@ -117,12 +113,60 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
       rounds[rounds.length - 1] ||
       null;
 
+    const displayedLots = [
+      liveLot,
+      !liveLot ? nextLot : null,
+      ...recentlySold,
+    ].filter((lot): lot is NonNullable<typeof lot> => lot !== null);
+
+    const displayedRegIds = [
+      ...new Set(
+        displayedLots
+          .map((lot) => lot.registration_id)
+          .filter((id): id is string => typeof id === 'string')
+      ),
+    ];
+    const { data: regImages, error: regImagesError } = displayedRegIds.length > 0
+      ? await supabase
+          .from('registrations')
+          .select('id, registered_image_snapshot')
+          .in('id', displayedRegIds)
+      : { data: [], error: null };
+    if (regImagesError) throw regImagesError;
+    const imageByRegId = new Map(
+      (regImages || []).map((img) => [img.id, img.registered_image_snapshot])
+    );
+
+    const missingPlayerIds = [
+      ...new Set(
+        displayedLots
+          .filter((lot) => !lot.registration && lot.player_id)
+          .map((lot) => lot.player_id)
+          .filter((id): id is string => typeof id === 'string')
+      ),
+    ];
+    const { data: fallbackPlayers, error: fallbackPlayersError } = missingPlayerIds.length > 0
+      ? await supabase
+          .from('players')
+          .select('id, full_name, profile_image_url, cricket_role, batting_style')
+          .in('id', missingPlayerIds)
+      : { data: [], error: null };
+    if (fallbackPlayersError) throw fallbackPlayersError;
+    const playerById = new Map((fallbackPlayers || []).map((p) => [p.id, p]));
+
     function buildPublicLot(lot: (typeof lots)[number]) {
-      const player = Array.isArray(lot.player) ? lot.player[0] : lot.player;
+      const rawLot = lot as Record<string, unknown>;
+      const playerMock = Array.isArray(rawLot.player)
+        ? rawLot.player[0]
+        : (rawLot.player as Record<string, unknown> | null);
       const reg = Array.isArray(lot.registration)
         ? lot.registration[0]
         : lot.registration;
-      const round = Array.isArray(lot.round) ? lot.round[0] : lot.round;
+      const fallbackPlayer = playerMock || (lot.player_id ? playerById.get(lot.player_id) : null);
+      const roundMock = Array.isArray(rawLot.round)
+        ? rawLot.round[0]
+        : (rawLot.round as Record<string, unknown> | null);
+      const round = roundMock || roundById.get(lot.round_id);
       const liveOwner = lot.current_highest_team_owner_id
         ? ownerById.get(lot.current_highest_team_owner_id)
         : null;
@@ -130,12 +174,18 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
         ? ownerById.get(lot.winning_team_owner_id)
         : null;
 
+      const playerImage =
+        (lot.registration_id ? imageByRegId.get(lot.registration_id) : null) ||
+        (reg as { registered_image_snapshot?: string } | null)?.registered_image_snapshot ||
+        (fallbackPlayer as { profile_image_url?: string } | null)?.profile_image_url ||
+        null;
+
       return {
         id: lot.id,
         lotNumber: lot.lot_number,
         status: lot.status,
-        roundNumber: round?.round_number || null,
-        roundType: round?.round_type || null,
+        roundNumber: (round as { round_number?: number } | null)?.round_number || null,
+        roundType: (round as { round_type?: string } | null)?.round_type || null,
         currentBid: lot.current_highest_bid,
         soldAmount: lot.sold_amount,
         soldAt: lot.sold_at,
@@ -149,23 +199,20 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
           winOwner?.team_name || winOwner?.owner_name || null,
         winningTeamLogo: null,
         // Player info — registration-specific details prioritized over shared player record
-        player: (player || reg)
+        player: (playerMock || reg || fallbackPlayer || lot.player_id)
           ? {
               name:
                 reg?.registered_name_snapshot ||
-                player?.full_name ||
+                (fallbackPlayer as { full_name?: string } | null)?.full_name ||
                 'Player',
-              image:
-                reg?.registered_image_snapshot ||
-                player?.profile_image_url ||
-                null,
+              image: playerImage,
               role:
                 reg?.registered_role_snapshot ||
-                player?.cricket_role ||
+                (fallbackPlayer as { cricket_role?: string } | null)?.cricket_role ||
                 null,
               battingStyle:
                 reg?.registered_batting_style_snapshot ||
-                player?.batting_style ||
+                (fallbackPlayer as { batting_style?: string } | null)?.batting_style ||
                 null,
               bowlingStyle:
                 reg?.registered_bowling_style_snapshot ||

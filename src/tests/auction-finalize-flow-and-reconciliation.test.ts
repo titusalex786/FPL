@@ -55,9 +55,9 @@ describe('Immediate SOLD and UNSOLD Controls', () => {
       'utf8'
     );
 
-    // SOLD button checks currentBid and IN_PROGRESS, not secondsRemaining !== 0
+    // SOLD button checks currentBid and isLotBiddingActive, not secondsRemaining !== 0
     expect(controlCode).toContain('id="admin-sold-btn"');
-    expect(controlCode).toContain('disabled={busy || !liveLot.currentBid || liveLot.status !== \'IN_PROGRESS\'}');
+    expect(controlCode).toContain('disabled={busy || !liveLot.currentBid || !isLotBiddingActive}');
     expect(controlCode).toContain("SOLD {liveLot.currentBid ? `(₹${money(liveLot.currentBid)})` : ''}");
   });
 
@@ -68,7 +68,7 @@ describe('Immediate SOLD and UNSOLD Controls', () => {
     );
 
     expect(controlCode).toContain('id="admin-unsold-btn"');
-    expect(controlCode).toContain('disabled={busy || Boolean(liveLot.currentBid) || liveLot.status !== \'IN_PROGRESS\'}');
+    expect(controlCode).toContain('disabled={busy || Boolean(liveLot.currentBid) || !isLotBiddingActive}');
   });
 
   it('verifies Next Player button is provided for advancing lots', () => {

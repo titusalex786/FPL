@@ -307,6 +307,10 @@ export default function AuctionControlPanelPage() {
     () => data?.lots.find((lot) => lot.id === data.liveLotId) || null,
     [data]
   );
+  const isLotBiddingActive = useMemo(
+    () => Boolean(liveLot && (liveLot.status === 'LIVE' || liveLot.status === 'IN_PROGRESS')),
+    [liveLot]
+  );
   const nextLot = useMemo(
     () => data?.lots.find((lot) => lot.status === 'AVAILABLE') || null,
     [data]
@@ -916,7 +920,7 @@ export default function AuctionControlPanelPage() {
                   {liveLot.player?.role || 'Player'}
                 </span>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                  liveLot.status === 'IN_PROGRESS'
+                  isLotBiddingActive
                     ? 'bg-emerald-500/10 text-emerald-300'
                     : 'bg-slate-800 text-slate-400'
                 }`}>
@@ -942,7 +946,7 @@ export default function AuctionControlPanelPage() {
 
                 <button
                   type="button"
-                  disabled={extendingTimer || busy || liveLot.status !== 'IN_PROGRESS'}
+                  disabled={extendingTimer || busy || !isLotBiddingActive}
                   onClick={() => void handleExtendTimer(60)}
                   className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-bold text-amber-300 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
                   title="Add exactly 60 seconds to this active lot timer"
@@ -1008,13 +1012,13 @@ export default function AuctionControlPanelPage() {
                 <button
                   type="button"
                   id="admin-sold-btn"
-                  disabled={busy || !liveLot.currentBid || liveLot.status !== 'IN_PROGRESS'}
+                  disabled={busy || !liveLot.currentBid || !isLotBiddingActive}
                   onClick={() => void postAction(
                     `/api/admin/auctions/${auctionId}/lots/${liveLot.id}`,
                     { action: 'SETTLE' }
                   )}
                   className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all ${
-                    liveLot.currentBid && liveLot.status === 'IN_PROGRESS' && !busy
+                    liveLot.currentBid && isLotBiddingActive && !busy
                       ? 'bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 active:scale-95 shadow-emerald-950/60 ring-2 ring-emerald-400/40 cursor-pointer'
                       : 'cursor-not-allowed bg-slate-800 text-slate-500 opacity-40'
                   }`}
@@ -1032,13 +1036,13 @@ export default function AuctionControlPanelPage() {
                 <button
                   type="button"
                   id="admin-unsold-btn"
-                  disabled={busy || Boolean(liveLot.currentBid) || liveLot.status !== 'IN_PROGRESS'}
+                  disabled={busy || Boolean(liveLot.currentBid) || !isLotBiddingActive}
                   onClick={() => void postAction(
                     `/api/admin/auctions/${auctionId}/lots/${liveLot.id}`,
                     { action: 'END_UNSOLD' }
                   )}
                   className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all ${
-                    !liveLot.currentBid && liveLot.status === 'IN_PROGRESS' && !busy
+                    !liveLot.currentBid && isLotBiddingActive && !busy
                       ? secondsRemaining === 0
                         ? 'border border-amber-500/60 bg-amber-950/60 text-amber-200 hover:bg-amber-900/80 ring-2 ring-amber-400/40 active:scale-95 cursor-pointer'
                         : 'border border-rose-500/50 bg-rose-950/60 text-rose-200 hover:bg-rose-900/80 active:scale-95 cursor-pointer'
@@ -1058,7 +1062,7 @@ export default function AuctionControlPanelPage() {
                 {nextLot && (
                   <button
                     type="button"
-                    disabled={busy || liveLot.status === 'IN_PROGRESS'}
+                    disabled={busy || isLotBiddingActive}
                     onClick={() => void postAction(
                       `/api/admin/auctions/${auctionId}/lots/${nextLot.id}`,
                       { action: 'START' }
@@ -1203,7 +1207,7 @@ export default function AuctionControlPanelPage() {
               !anyBidInFlight &&
               !busy &&
               !isAuctionPaused &&
-              liveLot?.status === 'IN_PROGRESS';
+              isLotBiddingActive;
 
             return (
               <div

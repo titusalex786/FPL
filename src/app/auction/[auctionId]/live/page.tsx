@@ -260,6 +260,7 @@ export default function ProjectorLivePage({
 
   const isLive = liveLot?.status === 'LIVE';
   const isSold = liveLot?.status === 'SOLD';
+  const isUnsold = liveLot?.status === 'UNSOLD';
 
   // Determine color accent for current bid
   const bidColor =
@@ -408,7 +409,7 @@ export default function ProjectorLivePage({
                 </div>
               </div>
 
-              {/* SOLD / Current bid */}
+              {/* SOLD / UNSOLD / Current bid */}
               {isSold ? (
                 <div className="mt-2 text-center">
                   <div
@@ -426,6 +427,20 @@ export default function ProjectorLivePage({
                     </p>
                     <p className="mt-1 text-lg font-bold text-emerald-300">
                       {liveLot.winningTeamName || '—'}
+                    </p>
+                  </div>
+                </div>
+              ) : isUnsold ? (
+                <div className="mt-2 text-center">
+                  <div
+                    className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-10 py-6"
+                    style={{ boxShadow: '0 0 40px #f43f5e30' }}
+                  >
+                    <p className="text-sm font-bold uppercase tracking-[0.25em] text-rose-400">
+                      ✗ UNSOLD
+                    </p>
+                    <p className="mt-2 text-base font-bold text-slate-300">
+                      Eligible for Retry Round
                     </p>
                   </div>
                 </div>

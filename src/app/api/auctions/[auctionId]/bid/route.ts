@@ -107,25 +107,45 @@ async function resolveAuctionOwner(
     .eq('auth_user_id', userId)
     .maybeSingle();
   if (playerError) throw playerError;
-  if (!player) return null;
 
-  const { data: ownerRows, error: ownerError } = await supabase
-    .from('team_owners')
+  // Find user's registrations in this tournament
+  const queryParts = [`created_by_auth_id.eq.${userId}`, `user_id.eq.${userId}`];
+  if (player) {
+    queryParts.push(`player_id.eq.${player.id}`);
+  }
+  const { data: userRegs } = await supabase
+    .from('registrations')
     .select('id')
     .eq('tournament_id', tournamentId)
-    .eq('player_id', player.id);
+    .or(queryParts.join(','));
+
+  const userRegIds = new Set((userRegs || []).map((r: any) => r.id));
+
+  // Find team_owners by owner player_id, owner_registration_id, or icon_registration_id
+  const { data: allOwners, error: ownerError } = await supabase
+    .from('team_owners')
+    .select('id, owner_name, team_name, player_id, icon_registration_id, owner_registration_id')
+    .eq('tournament_id', tournamentId);
   if (ownerError) throw ownerError;
-  if (!ownerRows || ownerRows.length !== 1) return null;
+
+  const matchedOwners = (allOwners || []).filter((owner: any) => {
+    if (player && owner.player_id === player.id) return true;
+    if (owner.owner_registration_id && userRegIds.has(owner.owner_registration_id)) return true;
+    if (owner.icon_registration_id && userRegIds.has(owner.icon_registration_id)) return true;
+    return false;
+  });
+
+  if (matchedOwners.length !== 1) return null;
 
   const { data: budget, error: budgetError } = await supabase
     .from('auction_team_budgets')
     .select('id')
     .eq('auction_id', auctionId)
     .eq('tournament_id', tournamentId)
-    .eq('team_owner_id', ownerRows[0].id)
+    .eq('team_owner_id', matchedOwners[0].id)
     .maybeSingle();
   if (budgetError) throw budgetError;
-  return budget ? ownerRows[0] : null;
+  return budget ? matchedOwners[0] : null;
 }
 
 export async function GET(_request: NextRequest, { params }: RouteContext) {

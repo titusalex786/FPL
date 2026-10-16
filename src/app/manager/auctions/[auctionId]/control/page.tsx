@@ -48,11 +48,27 @@ type AuctionConfiguration = {
   allowOwnerSelfPurchase: boolean;
 };
 
+type PurchasedPlayerRoster = {
+  id: string;
+  registrationId: string;
+  playerId: string;
+  name: string;
+  image: string | null;
+  role: string;
+  battingStyle: string | null;
+  bowlingStyle: string | null;
+  jerseySize: string | null;
+  winningBid: number;
+  purchasedAt: string;
+};
+
 type TeamBudget = {
   teamOwnerId: string;
   teamName: string;
   ownerName: string;
   teamLogo: string | null;
+  iconName?: string | null;
+  hasMissingIconAssociation?: boolean;
   startingKitty: number;
   remainingKitty: number;
   kittyUsed: number;
@@ -62,6 +78,45 @@ type TeamBudget = {
   averageAvailablePerRemainingPlayer: number;
   maximumAffordableCurrentBid: number;
   status: string;
+  roster?: PurchasedPlayerRoster[];
+  totalRosterSpend?: number;
+};
+
+type RetryValidationData = {
+  auction_id: string;
+  initial_round_unsold_count: number;
+  retry_eligible_count: number;
+  already_retried_count: number;
+  sold_count_excluded: number;
+  invalid_or_cancelled_count: number;
+  candidates: Array<{
+    registration_id: string;
+    player_id: string;
+    player_name: string;
+    role: string | null;
+    image: string | null;
+  }>;
+};
+
+type ReconciliationData = {
+  auction_id: string;
+  total_sold_lots: number;
+  total_purchases: number;
+  total_unique_purchased_registrations: number;
+  is_balanced: boolean;
+  missing_purchase_lots: any[];
+  missing_sold_lot_purchases: any[];
+  teams: Array<{
+    team_owner_id: string;
+    team_name: string;
+    owner_name: string;
+    starting_kitty: number;
+    remaining_kitty: number;
+    kitty_deducted: number;
+    total_purchased_amount: number;
+    purchased_count: number;
+    is_kitty_matched: boolean;
+  }>;
 };
 
 type AuctionLot = {
@@ -192,6 +247,20 @@ export default function AuctionControlPanelPage() {
   // Player search & filter
   const [playerSearch, setPlayerSearch] = useState<string>('');
   const [candidateFilter, setCandidateFilter] = useState<'ALL' | 'OWNER' | 'PLAYER' | 'ICON'>('ALL');
+
+  // Team View Details modal
+  const [selectedTeamIdForDetails, setSelectedTeamIdForDetails] = useState<string | null>(null);
+
+  // UNSOLD Retry Round state
+  const [showRetryModal, setShowRetryModal] = useState(false);
+  const [retryValidation, setRetryValidation] = useState<RetryValidationData | null>(null);
+  const [loadingRetry, setLoadingRetry] = useState(false);
+  const [startingRetryRound, setStartingRetryRound] = useState(false);
+
+  // Reconciliation state
+  const [showReconciliationModal, setShowReconciliationModal] = useState(false);
+  const [reconciliationData, setReconciliationData] = useState<ReconciliationData | null>(null);
+  const [loadingReconciliation, setLoadingReconciliation] = useState(false);
 
   const refresh = useCallback(async (showLoader = false) => {
     if (refreshInFlight.current) {
@@ -410,6 +479,68 @@ export default function AuctionControlPanelPage() {
     setAdjustmentReason('');
   }
 
+  const selectedTeamDetails = useMemo(() => {
+    if (!selectedTeamIdForDetails || !data) return null;
+    return data.teams.find((t) => t.teamOwnerId === selectedTeamIdForDetails) || null;
+  }, [selectedTeamIdForDetails, data]);
+
+  async function openRetryModal() {
+    setShowRetryModal(true);
+    setLoadingRetry(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/auctions/${auctionId}/retry-round/validation`);
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(getErrorMessage(payload, 'Failed to fetch retry validation'));
+      }
+      setRetryValidation(payload as RetryValidationData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch retry validation');
+    } finally {
+      setLoadingRetry(false);
+    }
+  }
+
+  async function handleStartRetryRound() {
+    setStartingRetryRound(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/auctions/${auctionId}/retry-round/start`, {
+        method: 'POST',
+      });
+      const payload: any = await response.json();
+      if (!response.ok) {
+        throw new Error(getErrorMessage(payload, 'Failed to start retry round'));
+      }
+      setNotice(`Retry round started with ${payload.created_lots_count ?? 0} unsold player lots.`);
+      setShowRetryModal(false);
+      await refresh(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start retry round');
+    } finally {
+      setStartingRetryRound(false);
+    }
+  }
+
+  async function openReconciliationModal() {
+    setShowReconciliationModal(true);
+    setLoadingReconciliation(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/auctions/${auctionId}/reconciliation`);
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(getErrorMessage(payload, 'Failed to fetch reconciliation report'));
+      }
+      setReconciliationData(payload as ReconciliationData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch reconciliation report');
+    } finally {
+      setLoadingReconciliation(false);
+    }
+  }
+
   function setConfigurationField(
     field: keyof AuctionConfiguration,
     value: number | boolean | null
@@ -610,6 +741,30 @@ export default function AuctionControlPanelPage() {
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
+          </button>
+
+          {/* UNSOLD Retry Round */}
+          <button
+            type="button"
+            onClick={() => void openRetryModal()}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs font-bold text-indigo-300 hover:bg-indigo-500/20 disabled:opacity-50 transition-colors shadow-sm"
+            title="Open UNSOLD Retry Round validation and controls"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            <span>Retry Round</span>
+          </button>
+
+          {/* Audit / Reconciliation */}
+          <button
+            type="button"
+            onClick={() => void openReconciliationModal()}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs font-bold text-blue-300 hover:bg-blue-500/20 disabled:opacity-50 transition-colors shadow-sm"
+            title="Run complete auction reconciliation check"
+          >
+            <Shield className="h-3.5 w-3.5" />
+            <span>Reconciliation</span>
           </button>
 
           {/* Auction Settings Toggle Button */}
@@ -848,29 +1003,73 @@ export default function AuctionControlPanelPage() {
               </div>
 
               {/* Quick actions for lot */}
-              <div className="flex flex-wrap items-center gap-1.5 sm:flex-col sm:items-stretch sm:justify-center">
+              <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-stretch sm:justify-center">
+                {/* Immediate SOLD Button */}
                 <button
                   type="button"
-                  disabled={busy || secondsRemaining !== 0 || !liveLot.currentBid}
+                  id="admin-sold-btn"
+                  disabled={busy || !liveLot.currentBid || liveLot.status !== 'IN_PROGRESS'}
                   onClick={() => void postAction(
                     `/api/admin/auctions/${auctionId}/lots/${liveLot.id}`,
                     { action: 'SETTLE' }
                   )}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40 shadow-sm"
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all ${
+                    liveLot.currentBid && liveLot.status === 'IN_PROGRESS' && !busy
+                      ? 'bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 active:scale-95 shadow-emerald-950/60 ring-2 ring-emerald-400/40 cursor-pointer'
+                      : 'cursor-not-allowed bg-slate-800 text-slate-500 opacity-40'
+                  }`}
+                  title={
+                    liveLot.currentBid
+                      ? `Settle immediately to ${liveLot.currentTeamName} for ₹${money(liveLot.currentBid)}`
+                      : 'A valid bid is required to settle as SOLD'
+                  }
                 >
-                  <Check className="h-3.5 w-3.5" /> Settle Expired
+                  <Check className="h-4 w-4" />
+                  <span>SOLD {liveLot.currentBid ? `(₹${money(liveLot.currentBid)})` : ''}</span>
                 </button>
+
+                {/* Immediate UNSOLD Button */}
                 <button
                   type="button"
-                  disabled={busy}
+                  id="admin-unsold-btn"
+                  disabled={busy || Boolean(liveLot.currentBid) || liveLot.status !== 'IN_PROGRESS'}
                   onClick={() => void postAction(
                     `/api/admin/auctions/${auctionId}/lots/${liveLot.id}`,
                     { action: 'END_UNSOLD' }
                   )}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-300 hover:border-amber-500/50 hover:text-amber-200 disabled:opacity-40"
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all ${
+                    !liveLot.currentBid && liveLot.status === 'IN_PROGRESS' && !busy
+                      ? secondsRemaining === 0
+                        ? 'border border-amber-500/60 bg-amber-950/60 text-amber-200 hover:bg-amber-900/80 ring-2 ring-amber-400/40 active:scale-95 cursor-pointer'
+                        : 'border border-rose-500/50 bg-rose-950/60 text-rose-200 hover:bg-rose-900/80 active:scale-95 cursor-pointer'
+                      : 'cursor-not-allowed border border-slate-800 bg-slate-900 text-slate-500 opacity-40'
+                  }`}
+                  title={
+                    liveLot.currentBid
+                      ? 'Cannot mark unsold while an active bid exists'
+                      : 'Mark lot as UNSOLD immediately'
+                  }
                 >
-                  <XCircle className="h-3.5 w-3.5" /> Mark Unsold
+                  <XCircle className="h-4 w-4" />
+                  <span>UNSOLD {secondsRemaining === 0 && !liveLot.currentBid ? '(Expired)' : ''}</span>
                 </button>
+
+                {/* Visible Next Player button */}
+                {nextLot && (
+                  <button
+                    type="button"
+                    disabled={busy || liveLot.status === 'IN_PROGRESS'}
+                    onClick={() => void postAction(
+                      `/api/admin/auctions/${auctionId}/lots/${nextLot.id}`,
+                      { action: 'START' }
+                    )}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-teal-600 px-3.5 py-1.5 text-xs font-bold text-white shadow hover:bg-teal-500 disabled:opacity-40"
+                    title={`Start lot #${nextLot.lotNumber}`}
+                  >
+                    <Play className="h-3.5 w-3.5" /> Next (#{nextLot.lotNumber})
+                  </button>
+                )}
+
                 {!liveLot.currentBid && (
                   <button
                     type="button"
@@ -1079,6 +1278,13 @@ export default function AuctionControlPanelPage() {
                     ) : (
                       `BID ₹${money(nextValidBid)}`
                     )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTeamIdForDetails(team.teamOwnerId)}
+                    className="mt-1.5 w-full rounded-lg border border-slate-700/80 bg-slate-800/60 py-1 text-[11px] font-bold text-slate-300 hover:border-teal-500/50 hover:bg-slate-800 hover:text-white transition-colors"
+                  >
+                    View Details ({team.roster?.length ?? team.playersBought})
                   </button>
                 </div>
               </div>
@@ -1432,6 +1638,387 @@ export default function AuctionControlPanelPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Team View Details Modal */}
+      {selectedTeamDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-slate-800 p-4 sm:p-5">
+              <div className="flex items-center gap-3">
+                {selectedTeamDetails.teamLogo ? (
+                  <img
+                    src={selectedTeamDetails.teamLogo}
+                    alt=""
+                    className="h-12 w-12 rounded-xl object-contain bg-slate-950 p-1 border border-slate-800"
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-950 border border-slate-800 font-bold text-white text-lg">
+                    {selectedTeamDetails.teamName.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-lg sm:text-xl font-black text-white">{selectedTeamDetails.teamName}</h3>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400 mt-0.5">
+                    <span>Owner: <b className="text-slate-200">{selectedTeamDetails.ownerName}</b></span>
+                    <span>•</span>
+                    <span>
+                      Icon / Bidder:{' '}
+                      {selectedTeamDetails.hasMissingIconAssociation || !selectedTeamDetails.iconName ? (
+                        <span className="inline-flex items-center gap-1 font-bold text-amber-400">
+                          <AlertCircle className="h-3 w-3" /> Missing Icon/Bidder Association
+                        </span>
+                      ) : (
+                        <b className="text-teal-300">{selectedTeamDetails.iconName}</b>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTeamIdForDetails(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Financial & Squad Stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-4 bg-slate-950/60 border-b border-slate-800 text-xs">
+              <div className="rounded-lg bg-slate-900/80 p-2.5">
+                <span className="text-[10px] uppercase text-slate-400">Starting Kitty</span>
+                <p className="font-mono font-bold text-white text-sm">₹{money(selectedTeamDetails.startingKitty)}</p>
+              </div>
+              <div className="rounded-lg bg-slate-900/80 p-2.5">
+                <span className="text-[10px] uppercase text-slate-400">Remaining Kitty</span>
+                <p className="font-mono font-bold text-teal-300 text-sm">₹{money(selectedTeamDetails.remainingKitty)}</p>
+              </div>
+              <div className="rounded-lg bg-slate-900/80 p-2.5">
+                <span className="text-[10px] uppercase text-slate-400">Total Spent</span>
+                <p className="font-mono font-bold text-amber-300 text-sm">₹{money(selectedTeamDetails.totalRosterSpend ?? selectedTeamDetails.kittyUsed)}</p>
+              </div>
+              <div className="rounded-lg bg-slate-900/80 p-2.5">
+                <span className="text-[10px] uppercase text-slate-400">Squad Count</span>
+                <p className="font-bold text-white text-sm">
+                  {selectedTeamDetails.playersBought} / {data.auction.configuration.totalPlayersToBuy}
+                  <span className="text-xs text-slate-400 font-normal"> (left {selectedTeamDetails.playersRemaining})</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Purchased Roster List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Purchased Players ({selectedTeamDetails.roster?.length ?? 0})
+                </h4>
+                <span className="text-xs text-slate-400">
+                  Authoritative DB Records
+                </span>
+              </div>
+
+              {selectedTeamDetails.roster && selectedTeamDetails.roster.length > 0 ? (
+                <div className="space-y-2">
+                  {selectedTeamDetails.roster.map((player, idx) => (
+                    <div
+                      key={player.id}
+                      className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/70 p-3 hover:border-slate-700 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="text-xs font-bold text-slate-500 w-4">{idx + 1}</span>
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-slate-900 p-0.5 overflow-hidden">
+                          {player.image ? (
+                            <img
+                              src={player.image}
+                              alt=""
+                              className="max-h-full max-w-full rounded object-contain"
+                            />
+                          ) : (
+                            <Users className="h-5 w-5 text-slate-600" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate font-bold text-white text-sm">{player.name}</p>
+                          <p className="text-xs text-slate-400">
+                            {player.role}
+                            {player.battingStyle ? ` · ${player.battingStyle}` : ''}
+                            {player.bowlingStyle ? ` · ${player.bowlingStyle}` : ''}
+                            {player.jerseySize ? ` · Size ${toNumericJerseySize(player.jerseySize)}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 pl-3">
+                        <p className="font-mono font-bold text-emerald-300 text-sm">₹{money(player.winningBid)}</p>
+                        <time className="text-[10px] text-slate-500">
+                          {new Date(player.purchasedAt).toLocaleTimeString()}
+                        </time>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-800 p-8 text-center text-xs text-slate-500">
+                  No players purchased by this team yet.
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-800 p-4 text-right">
+              <button
+                type="button"
+                onClick={() => setSelectedTeamIdForDetails(null)}
+                className="rounded-xl bg-slate-800 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700"
+              >
+                Close Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. UNSOLD Retry Round Validation Modal */}
+      {showRetryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border border-indigo-500/30 bg-slate-900 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-800 p-4 sm:p-5">
+              <div>
+                <h3 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
+                  <RefreshCw className="h-5 w-5 text-indigo-400" />
+                  UNSOLD Retry Round (Round 2)
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Pre-retry validation report verifying eligible UNSOLD players.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRetryModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {loadingRetry ? (
+              <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-3">
+                <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
+                <p className="text-xs">Generating retry validation report from authoritative database…</p>
+              </div>
+            ) : retryValidation ? (
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+                {/* Validation Metrics Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+                  <div className="rounded-xl bg-slate-950 p-2.5 border border-slate-800">
+                    <span className="text-[10px] uppercase text-slate-400">Initial Unsold</span>
+                    <p className="font-mono font-bold text-white text-base mt-0.5">{retryValidation.initial_round_unsold_count}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-950 p-2.5 border border-indigo-500/40">
+                    <span className="text-[10px] uppercase text-indigo-300 font-bold">Retry Eligible</span>
+                    <p className="font-mono font-bold text-indigo-300 text-base mt-0.5">{retryValidation.retry_eligible_count}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-950 p-2.5 border border-slate-800">
+                    <span className="text-[10px] uppercase text-slate-400">Already Retried</span>
+                    <p className="font-mono font-bold text-slate-300 text-base mt-0.5">{retryValidation.already_retried_count}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-950 p-2.5 border border-slate-800">
+                    <span className="text-[10px] uppercase text-slate-400">Sold Excluded</span>
+                    <p className="font-mono font-bold text-emerald-400 text-base mt-0.5">{retryValidation.sold_count_excluded}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-950 p-2.5 border border-slate-800">
+                    <span className="text-[10px] uppercase text-slate-400">Invalid / Icon</span>
+                    <p className="font-mono font-bold text-rose-400 text-base mt-0.5">{retryValidation.invalid_or_cancelled_count}</p>
+                  </div>
+                </div>
+
+                {/* Candidate list preview */}
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Eligible Candidates for Retry Round ({retryValidation.candidates.length})
+                  </h4>
+                  {retryValidation.candidates.length > 0 ? (
+                    <div className="max-h-56 overflow-y-auto space-y-1.5 border border-slate-800 rounded-xl p-2 bg-slate-950">
+                      {retryValidation.candidates.map((cand, idx) => (
+                        <div
+                          key={cand.registration_id}
+                          className="flex items-center justify-between rounded-lg bg-slate-900/60 px-3 py-1.5 text-xs"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-500 font-mono text-[10px]">{idx + 1}.</span>
+                            <span className="font-bold text-white">{cand.player_name}</span>
+                            <span className="text-slate-400 text-[11px]">({cand.role || 'Player'})</span>
+                          </div>
+                          <span className="text-[10px] font-mono text-slate-500 truncate max-w-[120px]">
+                            {cand.registration_id.slice(0, 8)}…
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-800 p-6 text-center text-xs text-slate-400">
+                      No eligible unsold players found for retry round.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {/* Footer */}
+            <div className="flex items-center justify-between border-t border-slate-800 p-4">
+              <button
+                type="button"
+                onClick={() => setShowRetryModal(false)}
+                className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={startingRetryRound || !retryValidation || retryValidation.retry_eligible_count === 0}
+                onClick={() => void handleStartRetryRound()}
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-indigo-500 disabled:opacity-50"
+              >
+                {startingRetryRound ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                Start Retry Round ({retryValidation?.retry_eligible_count ?? 0} Players)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Auction Completion Reconciliation Modal */}
+      {showReconciliationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border border-blue-500/30 bg-slate-900 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-800 p-4 sm:p-5">
+              <div>
+                <h3 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-blue-400" />
+                  Auction Completion Reconciliation
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Authoritative database reconciliation of sold lots, purchases, and kitty deductions.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReconciliationModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {loadingReconciliation ? (
+              <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-3">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+                <p className="text-xs">Computing database reconciliation…</p>
+              </div>
+            ) : reconciliationData ? (
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+                {/* Status banner */}
+                <div
+                  className={`rounded-xl border p-3 text-xs flex items-center gap-2.5 ${
+                    reconciliationData.is_balanced
+                      ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-200'
+                      : 'border-rose-500/40 bg-rose-950/30 text-rose-200'
+                  }`}
+                >
+                  {reconciliationData.is_balanced ? (
+                    <>
+                      <Check className="h-5 w-5 text-emerald-400 shrink-0" />
+                      <div>
+                        <p className="font-bold">ALL RECORDS 100% BALANCED</p>
+                        <p className="text-[11px] text-emerald-300/80">Every sold lot matches its purchase record and exact team budget deduction.</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-5 w-5 text-rose-400 shrink-0" />
+                      <div>
+                        <p className="font-bold">DISCREPANCIES DETECTED</p>
+                        <p className="text-[11px] text-rose-300/80">Differences detected between sold lots, purchases, or team budget deductions.</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Audit summary metrics */}
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="rounded-xl bg-slate-950 p-2.5 border border-slate-800">
+                    <span className="text-[10px] uppercase text-slate-400">Total SOLD Lots</span>
+                    <p className="font-mono font-bold text-white text-base mt-0.5">{reconciliationData.total_sold_lots}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-950 p-2.5 border border-slate-800">
+                    <span className="text-[10px] uppercase text-slate-400">Total Purchases</span>
+                    <p className="font-mono font-bold text-white text-base mt-0.5">{reconciliationData.total_purchases}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-950 p-2.5 border border-slate-800">
+                    <span className="text-[10px] uppercase text-slate-400">Unique Registrations</span>
+                    <p className="font-mono font-bold text-white text-base mt-0.5">{reconciliationData.total_unique_purchased_registrations}</p>
+                  </div>
+                </div>
+
+                {/* Team Breakdown Table */}
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Team-by-Team Financial Audit ({reconciliationData.teams.length} Teams)
+                  </h4>
+                  <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950">
+                    <table className="w-full text-left text-xs">
+                      <thead className="border-b border-slate-800 text-[10px] uppercase tracking-wide text-slate-400">
+                        <tr>
+                          <th className="p-2.5">Team</th>
+                          <th className="p-2.5">Bought</th>
+                          <th className="p-2.5">Purchases Total</th>
+                          <th className="p-2.5">Kitty Deducted</th>
+                          <th className="p-2.5 text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/80">
+                        {reconciliationData.teams.map((t) => (
+                          <tr key={t.team_owner_id}>
+                            <td className="p-2.5 font-bold text-white">{t.team_name}</td>
+                            <td className="p-2.5 text-slate-300">{t.purchased_count}</td>
+                            <td className="p-2.5 font-mono text-slate-200">₹{money(t.total_purchased_amount)}</td>
+                            <td className="p-2.5 font-mono text-slate-200">₹{money(t.kitty_deducted)}</td>
+                            <td className="p-2.5 text-right">
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                  t.is_kitty_matched
+                                    ? 'bg-emerald-500/20 text-emerald-300'
+                                    : 'bg-rose-500/20 text-rose-300'
+                                }`}
+                              >
+                                {t.is_kitty_matched ? 'BALANCED' : 'MISMATCH'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Footer */}
+            <div className="border-t border-slate-800 p-4 text-right">
+              <button
+                type="button"
+                onClick={() => setShowReconciliationModal(false)}
+                className="rounded-xl bg-slate-800 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700"
+              >
+                Close Reconciliation
+              </button>
+            </div>
           </div>
         </div>
       )}

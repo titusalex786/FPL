@@ -125,7 +125,32 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
         .order('player_id', { ascending: true }),
       supabase
         .from('auction_purchases')
-        .select('team_owner_id, winning_bid, purchase_status')
+        .select(`
+          id,
+          team_owner_id,
+          registration_id,
+          player_id,
+          winning_bid,
+          player_role,
+          purchase_status,
+          created_at,
+          registration:registrations (
+            registered_name_snapshot,
+            registered_role_snapshot,
+            registered_image_snapshot,
+            registered_batting_style_snapshot,
+            registered_bowling_style_snapshot,
+            registered_jersey_size_snapshot,
+            player:players (
+              full_name,
+              profile_image_url,
+              cricket_role,
+              batting_style,
+              bowling_style,
+              jersey_size
+            )
+          )
+        `)
         .eq('auction_id', auctionId)
         .eq('tournament_id', auction.tournament_id),
       supabase
@@ -190,11 +215,27 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
     const { data: owners, error: ownersError } = ownerIds.length
       ? await supabase
           .from('team_owners')
-          .select('id, owner_name, team_name, team_logo_url')
+          .select('id, owner_name, team_name, team_logo_url, icon_registration_id, owner_registration_id')
           .in('id', ownerIds)
       : { data: [], error: null };
     if (ownersError) throw ownersError;
     const ownerById = new Map((owners || []).map((owner) => [owner.id, owner]));
+
+    const iconRegIds = (owners || [])
+      .map((o) => o.icon_registration_id)
+      .filter((id): id is string => typeof id === 'string');
+    const { data: iconRegs } = iconRegIds.length > 0
+      ? await supabase
+          .from('registrations')
+          .select('id, registered_name_snapshot, player:players(full_name)')
+          .in('id', iconRegIds)
+      : { data: [] };
+    const iconNameByRegId = new Map(
+      (iconRegs || []).map((r: any) => [
+        r.id,
+        r.registered_name_snapshot || r.player?.full_name || 'Icon Player',
+      ])
+    );
 
     const teamBudgets = budgets.map((budget) => {
       const rulesState = getAuctionBudgetState(
@@ -212,11 +253,33 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
         }
       );
       const owner = ownerById.get(budget.team_owner_id);
+      const teamPurchases = purchases.filter((p: any) => p.team_owner_id === budget.team_owner_id);
+      const roster = teamPurchases.map((p: any) => {
+        const reg = p.registration;
+        return {
+          id: p.id,
+          registrationId: p.registration_id,
+          playerId: p.player_id,
+          name: reg?.registered_name_snapshot || reg?.player?.full_name || 'Player',
+          image: reg?.registered_image_snapshot || reg?.player?.profile_image_url || null,
+          role: reg?.registered_role_snapshot || reg?.player?.cricket_role || p.player_role || 'ALL_ROUNDER',
+          battingStyle: reg?.registered_batting_style_snapshot || reg?.player?.batting_style || null,
+          bowlingStyle: reg?.registered_bowling_style_snapshot || reg?.player?.bowling_style || null,
+          jerseySize: reg?.registered_jersey_size_snapshot || reg?.player?.jersey_size || null,
+          winningBid: p.winning_bid,
+          purchasedAt: p.created_at,
+        };
+      });
+      const totalRosterSpend = roster.reduce((sum: number, r: any) => sum + r.winningBid, 0);
+      const iconName = owner?.icon_registration_id ? iconNameByRegId.get(owner.icon_registration_id) || null : null;
+
       return {
         teamOwnerId: budget.team_owner_id,
         teamName: owner?.team_name || owner?.owner_name || 'Team',
         ownerName: owner?.owner_name || 'Owner',
         teamLogo: owner?.team_logo_url || null,
+        iconName,
+        hasMissingIconAssociation: !owner?.icon_registration_id,
         startingKitty: budget.starting_kitty,
         remainingKitty: budget.remaining_kitty,
         kittyUsed: budget.starting_kitty - budget.remaining_kitty,
@@ -229,6 +292,8 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
             : 0,
         maximumAffordableCurrentBid: rulesState.maximumAffordableBid,
         status: budget.status,
+        roster,
+        totalRosterSpend,
       };
     });
 
